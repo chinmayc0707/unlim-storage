@@ -1,0 +1,6 @@
+Flask==3.0.0
+Telethon==1.32.0
+SQLAlchemy==2.0.23
+python-dotenv==1.0.0
+cryptography
+aiohttp

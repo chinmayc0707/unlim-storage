@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Drive</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fa-brands fa-google-drive"></i> Flask Drive
+            </div>
+            <button class="new-btn"><i class="fa-solid fa-plus"></i> New</button>
+            <nav>
+                <a href="#" class="active"><i class="fa-solid fa-hard-drive"></i> My Drive</a>
+                <a href="#"><i class="fa-solid fa-clock"></i> Recent</a>
+                <a href="#"><i class="fa-solid fa-star"></i> Starred</a>
+                <a href="#"><i class="fa-solid fa-trash"></i> Trash</a>
+            </nav>
+        </aside>
+        
+        <main class="content">
+            <header class="top-bar">
+                <div class="search-bar">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" placeholder="Search in Drive">
+                </div>
+                <div class="user-profile">
+                    <div class="avatar">U</div>
+                </div>
+            </header>
+            
+            <div class="file-area">
+                <h2>My Drive</h2>
+                <div class="file-grid" id="file-grid">
+                    <!-- Files will be populated here by JS -->
+                    <div class="file-card">
+                        <div class="icon"><i class="fa-solid fa-file-lines"></i></div>
+                        <div class="name">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
