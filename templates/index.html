@@ -208,7 +208,21 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <!-- Upload Status Container -->
+    <div id="upload-status-container" class="upload-status-container" style="display: none;">
+        <div class="upload-header">
+            <span id="upload-header-text">Uploading 1 item</span>
+            <div class="upload-header-actions">
+                <button class="icon-btn small" onclick="toggleUploadContainer()"><i class="fa-solid fa-chevron-down" id="upload-toggle-icon"></i></button>
+                <button class="icon-btn small" onclick="closeUploadContainer()"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="upload-body" id="upload-list">
+            <!-- Upload items will be added here dynamically -->
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js', v=1) }}"></script>
 </body>
 
 </html>
