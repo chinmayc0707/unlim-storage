@@ -4,3 +4,4 @@ Telethon
 python-dotenv
 PyJWT
 requests
+waitress
