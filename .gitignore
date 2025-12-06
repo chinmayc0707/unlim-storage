@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+instance/
+*.db
+*.log
+sessions/
+tmp/
+verification/
