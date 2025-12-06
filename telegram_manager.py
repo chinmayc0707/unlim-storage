@@ -4,27 +4,43 @@ from telethon import TelegramClient, errors
 from config import Config
 from telethon.tl.types import DocumentAttributeFilename
 import math
+import shutil
 
 # 2GB limit (leaving a small buffer)
-CHUNK_SIZE = 2000 * 1024 * 1024 
+CHUNK_SIZE = 2000 * 1024 * 1024
 
 class TelegramManager:
-    def __init__(self):
+    def __init__(self, session_name):
+        self.session_name = session_name
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        self.client = TelegramClient('drive_session', Config.API_ID, Config.API_HASH, loop=self.loop)
+        # Do not set global loop as we might have multiple managers
+        # asyncio.set_event_loop(self.loop)
+
+        # Ensure 'sessions' directory exists
+        os.makedirs('sessions', exist_ok=True)
+        session_path = os.path.join('sessions', self.session_name)
+
+        self.client = TelegramClient(session_path, Config.API_ID, Config.API_HASH, loop=self.loop)
         self.phone = None
         self.phone_code_hash = None
         self.is_connected = False
 
+        # Initial check (without connecting fully, just check if authorized locally)
+        # Note: can't check easily without connecting.
+        pass
+
     def connect(self):
         if not self.client.is_connected():
             self.loop.run_until_complete(self.client.connect())
+
         self.is_connected = self.loop.run_until_complete(self.client.is_user_authorized())
         return self.is_connected
 
     def send_code(self, phone):
-        self.connect()
+        # Always connect before acting
+        if not self.client.is_connected():
+            self.loop.run_until_complete(self.client.connect())
+
         try:
             sent = self.loop.run_until_complete(self.client.send_code_request(phone))
             self.phone = phone
@@ -60,16 +76,16 @@ class TelegramManager:
         self.ensure_connected()
         file_size = os.path.getsize(file_path)
         message_ids = []
-        
+
         attributes = []
         if file_name:
             attributes.append(DocumentAttributeFilename(file_name=file_name))
-        
+
         if file_size <= CHUNK_SIZE:
             msg = self.loop.run_until_complete(
                 self.client.send_file(
-                    "me", 
-                    file_path, 
+                    "me",
+                    file_path,
                     caption=f"Codeword: {codeword} | Part: 1/1",
                     attributes=attributes,
                     force_document=True
@@ -84,26 +100,16 @@ class TelegramManager:
                     temp_chunk_path = f"{file_path}.part{part_num}"
                     with open(temp_chunk_path, 'wb') as temp_f:
                         temp_f.write(chunk_data)
-                    
+
                     try:
-                        # For parts, we might not want to force the filename as it's a part
-                        # But user wants "same file name". 
-                        # Usually split files are handled differently. 
-                        # For now, let's keep parts as is or name them partX?
-                        # Let's just apply attributes to the parts too, maybe with suffix?
-                        # Or just leave parts alone as they are internal.
-                        # The user likely means single files.
-                        # Let's apply to parts but maybe that's confusing.
-                        # Actually, if it's a large file, the parts are reassembled.
-                        # Let's apply the filename to the parts so they look nice too.
                         part_attributes = []
                         if file_name:
                              part_attributes.append(DocumentAttributeFilename(file_name=f"{file_name}.part{part_num}"))
 
                         msg = self.loop.run_until_complete(
                             self.client.send_file(
-                                "me", 
-                                temp_chunk_path, 
+                                "me",
+                                temp_chunk_path,
                                 caption=f"Codeword: {codeword} | Part: {part_num}/{total_parts}",
                                 attributes=part_attributes,
                                 force_document=True
@@ -113,7 +119,7 @@ class TelegramManager:
                     finally:
                         if os.path.exists(temp_chunk_path):
                             os.remove(temp_chunk_path)
-                            
+
         return message_ids
 
     def download_file(self, message_ids, output_path):
@@ -135,32 +141,32 @@ class TelegramManager:
     def copy_file(self, message_ids, new_codeword):
         self.ensure_connected()
         new_message_ids = []
-        
+
         for i, msg_id in enumerate(message_ids):
             # Forward the message to "me" (Saved Messages)
             forwarded_msgs = self.loop.run_until_complete(
                 self.client.forward_messages("me", [msg_id], from_peer="me")
             )
-            
+
             if not forwarded_msgs:
                 raise Exception(f"Failed to forward message {msg_id}")
-                
+
             new_msg = forwarded_msgs[0]
-            
+
             # Calculate part info if multiple parts
             total_parts = len(message_ids)
             part_num = i + 1
-            
+
             # Update caption with new codeword
             new_caption = f"Codeword: {new_codeword} | Part: {part_num}/{total_parts}"
-            
+
             # Edit the caption of the forwarded message
             self.loop.run_until_complete(
                 self.client.edit_message(new_msg, new_caption)
             )
-            
+
             new_message_ids.append(new_msg.id)
-            
+
         return new_message_ids
 
     def logout(self):
@@ -173,9 +179,27 @@ class TelegramManager:
                 self.is_connected = False
                 self.phone = None
                 self.phone_code_hash = None
-                # Re-initialize client to avoid "cannot be reused" error
+                # Clean disconnect
                 if self.client:
-                    self.client.disconnect()
-                self.client = TelegramClient('drive_session', Config.API_ID, Config.API_HASH, loop=self.loop)
+                    self.loop.run_until_complete(self.client.disconnect())
 
-tg_manager = TelegramManager()
+# Global registry for active managers
+# Key: user_id (str or int) or phone (str) for pending logins
+_active_managers = {}
+
+def get_manager(key):
+    """
+    Get or create a TelegramManager for the given key (user_id or phone).
+    """
+    key = str(key)
+    if key not in _active_managers:
+        session_name = f"user_{key}"
+        _active_managers[key] = TelegramManager(session_name)
+    return _active_managers[key]
+
+def remove_manager(key):
+    key = str(key)
+    if key in _active_managers:
+        manager = _active_managers[key]
+        # We might want to close the loop/client here if needed
+        del _active_managers[key]

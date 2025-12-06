@@ -271,190 +271,149 @@ function updateSelectionUI() {
     });
 }
 
-async function uploadFile(file) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('parent_id', currentFolderId || '');
+// --- Upload Functions ---
+let uploadQueue = [];
+let uploadMinimized = false;
 
-    try {
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
+function toggleUploadContainer() {
+    const list = document.getElementById('upload-list');
+    const icon = document.getElementById('upload-toggle-icon');
 
-        if (response.ok) {
-            fetchFiles();
-        } else if (response.status === 401) {
-            window.location.href = '/login';
-        } else {
-            alert('Upload failed');
-        }
-    } catch (error) {
-        console.error('Upload error:', error);
-        alert('Upload error');
-    }
-}
-
-function updateBreadcrumbs() {
-    const container = document.getElementById('breadcrumbs');
-    container.innerHTML = '';
-
-    folderPath.forEach((folder, index) => {
-        const span = document.createElement('span');
-        span.className = 'crumb';
-        span.textContent = folder.name;
-        span.onclick = () => navigateTo(index);
-        container.appendChild(span);
-    });
-}
-
-function navigateTo(index) {
-    if (index === null) {
-        folderPath = [{ id: null, name: 'My Drive' }];
-        fetchFiles(null);
+    if (uploadMinimized) {
+        list.style.display = 'block';
+        icon.className = 'fa-solid fa-chevron-down';
     } else {
-        const folder = folderPath[index];
-        folderPath = folderPath.slice(0, index + 1);
-        fetchFiles(folder.id);
+        list.style.display = 'none';
+        icon.className = 'fa-solid fa-chevron-up';
     }
+    uploadMinimized = !uploadMinimized;
 }
 
-function showContextMenu(e, item) {
-    e.stopPropagation();
-    contextMenuItem = item;
-    const menu = document.getElementById('context-menu');
-    menu.style.display = 'block';
-    menu.style.left = `${e.pageX}px`;
-    menu.style.top = `${e.pageY}px`;
+function closeUploadContainer() {
+    document.getElementById('upload-status-container').style.display = 'none';
+    document.getElementById('upload-list').innerHTML = ''; // Clear completed
 }
 
-function hideContextMenu() {
-    document.getElementById('context-menu').style.display = 'none';
-    contextMenuItem = null;
-}
+function createUploadItemUI(file) {
+    const container = document.getElementById('upload-status-container');
+    const list = document.getElementById('upload-list');
 
-function downloadItem() {
-    if (!contextMenuItem || contextMenuItem.type === 'folder') return;
-
-    window.location.href = `/api/download/${contextMenuItem.id}`;
-    hideContextMenu();
-}
-
-
-
-function showRenameModal() {
-    if (!contextMenuItem) return;
-    hideContextMenu();
-
-    document.getElementById('rename-modal').style.display = 'flex';
-    const input = document.getElementById('rename-input');
-    input.value = contextMenuItem.name;
-    input.focus();
-
-    // Handle Enter key
-    input.onkeypress = (e) => {
-        if (e.key === 'Enter') renameItem();
-    };
-}
-
-async function renameItem() {
-    if (!contextMenuItem) return;
-
-    const input = document.getElementById('rename-input');
-    const newName = input.value.trim();
-
-    if (!newName || newName === contextMenuItem.name) {
-        closeModal('rename-modal');
-        return;
+    if (container.style.display === 'none') {
+        container.style.display = 'flex';
+        uploadMinimized = false;
+        document.getElementById('upload-list').style.display = 'block';
+        document.getElementById('upload-toggle-icon').className = 'fa-solid fa-chevron-down';
     }
 
-    try {
-        const response = await fetch('/api/rename', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                id: contextMenuItem.id,
-                type: contextMenuItem.type,
-                name: newName
-            })
-        });
+    const item = document.createElement('div');
+    item.className = 'upload-item';
+    item.id = `upload-${file.name}-${Date.now()}`;
 
-        if (response.ok) {
-            closeModal('rename-modal');
-            fetchFiles();
-        } else {
-            alert('Rename failed');
-        }
-    } catch (error) {
-        console.error('Rename error:', error);
-        alert('Rename error');
-    }
+    // Update header count
+    const activeUploads = document.querySelectorAll('.upload-item .upload-progress-bar:not([style*="background-color: rgb(30, 142, 62)"])').length + 1;
+    // Note: The selector above is a bit brittle. A simpler way is to maintain a counter or check pending items.
+    // For now, let's just count all items in list as "items".
+    // Better: Update count based on list children.
+    const totalItems = list.children.length + 1;
+    document.getElementById('upload-header-text').textContent = `Uploading ${totalItems} item${totalItems !== 1 ? 's' : ''}`;
+
+    item.innerHTML = `
+        <div class="upload-item-header">
+            <div class="upload-filename" title="${file.name}">${file.name}</div>
+            <div class="upload-status-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+        </div>
+        <div class="upload-progress-bar-container">
+            <div class="upload-progress-bar"></div>
+        </div>
+        <div class="upload-details">
+            <span class="upload-size">Waiting...</span>
+            <span class="upload-speed"></span>
+        </div>
+    `;
+
+    list.prepend(item);
+    return item;
 }
 
-async function logout() {
-    if (!confirm('Are you sure you want to logout?')) return;
-
-    try {
-        const response = await fetch('/api/auth/logout', {
-            method: 'POST'
-        });
-
-        if (response.ok) {
-            window.location.href = '/login';
-        } else {
-            alert('Logout failed');
-        }
-    } catch (error) {
-        console.error('Logout error:', error);
-        alert('Logout error');
-    }
+function formatSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-// Expose for HTML onclick
-window.navigateTo = navigateTo;
-window.downloadItem = downloadItem;
+function uploadFile(file) {
+    const uiItem = createUploadItemUI(file);
+    const progressBar = uiItem.querySelector('.upload-progress-bar');
+    const sizeText = uiItem.querySelector('.upload-size');
+    const speedText = uiItem.querySelector('.upload-speed');
+    const statusIcon = uiItem.querySelector('.upload-status-icon');
 
-
-function handleItemDblClick(e, file) {
-    if (file.type === 'folder') {
-        folderPath.push({ id: file.id, name: file.name });
-        fetchFiles(file.id);
-    }
-}
-
-function updateSelectionUI() {
-    const cards = document.querySelectorAll('.file-card');
-    cards.forEach(card => {
-        if (selectedItems.has(card.dataset.id)) {
-            card.classList.add('selected');
-        } else {
-            card.classList.remove('selected');
-        }
-    });
-}
-
-async function uploadFile(file) {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('parent_id', currentFolderId || '');
 
-    try {
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
+    const xhr = new XMLHttpRequest();
+    let startTime = Date.now();
+    let lastLoaded = 0;
 
-        if (response.ok) {
-            fetchFiles();
-        } else if (response.status === 401) {
+    xhr.upload.addEventListener('loadstart', () => {
+        startTime = Date.now();
+        lastLoaded = 0;
+    });
+
+    xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 100;
+            progressBar.style.width = percentComplete + '%';
+
+            const currentTime = Date.now();
+            const timeDiff = (currentTime - startTime) / 1000; // seconds
+
+            // Calculate speed
+            if (timeDiff > 0) {
+                const speed = e.loaded / timeDiff; // bytes per second
+                speedText.textContent = `${formatSize(speed)}/s`;
+            }
+
+            sizeText.textContent = `${formatSize(e.loaded)} / ${formatSize(e.total)}`;
+        }
+    });
+
+    xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+            progressBar.style.width = '100%';
+            progressBar.style.backgroundColor = '#1e8e3e'; // Green
+            statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
+            sizeText.textContent = 'Upload complete';
+            speedText.textContent = '';
+            fetchFiles(); // Refresh file list
+        } else if (xhr.status === 401) {
             window.location.href = '/login';
         } else {
-            alert('Upload failed');
+            statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #d93025;"></i>';
+            sizeText.textContent = 'Upload failed';
+            speedText.textContent = '';
+            progressBar.style.backgroundColor = '#d93025'; // Red
         }
-    } catch (error) {
-        console.error('Upload error:', error);
-        alert('Upload error');
-    }
+    });
+
+    xhr.addEventListener('error', () => {
+        statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #d93025;"></i>';
+        sizeText.textContent = 'Network error';
+        speedText.textContent = '';
+        progressBar.style.backgroundColor = '#d93025';
+    });
+
+    xhr.addEventListener('abort', () => {
+        statusIcon.innerHTML = '<i class="fa-solid fa-ban"></i>';
+        sizeText.textContent = 'Cancelled';
+        speedText.textContent = '';
+    });
+
+    xhr.open('POST', '/api/upload');
+    xhr.send(formData);
 }
 
 function updateBreadcrumbs() {
@@ -634,7 +593,6 @@ window.renameItem = renameItem;
 window.openDestinationModal = openDestinationModal;
 window.confirmMove = confirmMove;
 window.confirmCopy = confirmCopy;
-
 function openDestinationModal(action) {
     if (!contextMenuItem) return;
 
