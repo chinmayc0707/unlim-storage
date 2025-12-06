@@ -309,6 +309,14 @@ function createUploadItemUI(file) {
     item.className = 'upload-item';
     item.id = `upload-${file.name}-${Date.now()}`;
 
+    // Update header count
+    const activeUploads = document.querySelectorAll('.upload-item .upload-progress-bar:not([style*="background-color: rgb(30, 142, 62)"])').length + 1;
+    // Note: The selector above is a bit brittle. A simpler way is to maintain a counter or check pending items.
+    // For now, let's just count all items in list as "items".
+    // Better: Update count based on list children.
+    const totalItems = list.children.length + 1;
+    document.getElementById('upload-header-text').textContent = `Uploading ${totalItems} item${totalItems !== 1 ? 's' : ''}`;
+
     item.innerHTML = `
         <div class="upload-item-header">
             <div class="upload-filename" title="${file.name}">${file.name}</div>
