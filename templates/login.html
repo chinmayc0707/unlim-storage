@@ -5,51 +5,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Flask Drive</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/login.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
-<body class="login-body">
+<body>
+    <!-- Background Shapes -->
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+
     <div class="login-container">
-        <div class="login-card">
+        <div class="login-card fade-in-up">
             <div class="login-header">
-                <i class="fa-brands fa-telegram" style="font-size: 3rem; color: #24A1DE;"></i>
-                <h1>Login to Drive</h1>
-                <p>Securely access your files via Telegram</p>
+                <i class="fa-brands fa-telegram"></i>
+                <h1>Welcome Back</h1>
+                <p>Access your unlimited cloud storage</p>
             </div>
 
             <div id="step-phone" class="login-step">
                 <div class="input-group">
                     <label>Phone Number</label>
-                    <input type="text" id="phone-input" placeholder="+1234567890" autofocus>
-                    <small>Include country code (e.g., +1)</small>
+                    <input type="text" id="phone-input" placeholder="+1 234 567 8900" autofocus>
+                    <small>Enter number with country code</small>
                 </div>
-                <button onclick="sendCode()" class="primary-btn">Send Code</button>
+                <button onclick="sendCode()" class="primary-btn">Continue</button>
             </div>
 
             <div id="step-code" class="login-step" style="display: none;">
                 <div class="input-group">
                     <label>Verification Code</label>
-                    <input type="text" id="code-input" placeholder="12345">
-                    <small>Check your Telegram app</small>
+                    <input type="text" id="code-input" placeholder="• • • • •" style="letter-spacing: 4px; text-align: center;">
+                    <small>Sent to your Telegram app</small>
                 </div>
-                <button onclick="verifyCode()" class="primary-btn">Verify</button>
+                <button onclick="verifyCode()" class="primary-btn">Verify Login</button>
             </div>
 
             <div id="step-password" class="login-step" style="display: none;">
                 <div class="input-group">
                     <label>Two-Step Verification</label>
-                    <input type="password" id="password-input" placeholder="Password">
+                    <input type="password" id="password-input" placeholder="Enter your password">
                 </div>
-                <button onclick="verifyPassword()" class="primary-btn">Login</button>
+                <button onclick="verifyPassword()" class="primary-btn">Unlock Account</button>
             </div>
 
             <div id="login-error" class="error-msg"></div>
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
     <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+    <script>
+        // Add fade animation when switching steps
+        function showStep(stepId) {
+            document.querySelectorAll('.login-step').forEach(el => el.style.display = 'none');
+            const step = document.getElementById(stepId);
+            step.style.display = 'block';
+            step.classList.remove('fade-in-up');
+            void step.offsetWidth; // trigger reflow
+            step.classList.add('fade-in-up');
+        }
+    </script>
 </body>
 
 </html>

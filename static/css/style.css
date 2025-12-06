@@ -145,6 +145,8 @@ body {
 .user-profile {
     margin-left: 8px;
     padding: 4px;
+    position: relative;
+    /* For absolute positioning of menu */
 }
 
 .user-profile .avatar {
@@ -158,6 +160,38 @@ body {
     justify-content: center;
     font-size: 16px;
     cursor: pointer;
+}
+
+.user-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px 2px rgba(60, 64, 67, 0.15), 0 1px 2px 0 rgba(60, 64, 67, 0.3);
+    display: none;
+    z-index: 1000;
+    width: 200px;
+    padding: 8px 0;
+    margin-top: 8px;
+}
+
+.user-menu .item {
+    padding: 10px 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: #1f1f1f;
+}
+
+.user-menu .item:hover {
+    background-color: #f0f1f3;
+}
+
+.user-menu .item.danger {
+    color: #d93025;
 }
 
 /* --- Main Body --- */
@@ -599,6 +633,7 @@ body {
     background-color: var(--primary-hover);
     box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
 }
+
 /* --- Upload Status Container --- */
 .upload-status-container {
     position: fixed;

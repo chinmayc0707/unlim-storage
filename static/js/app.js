@@ -28,6 +28,10 @@ function setupEventListeners() {
             const newMenu = document.getElementById('new-menu');
             if (newMenu) newMenu.style.display = 'none';
         }
+        if (!e.target.closest('.user-profile')) {
+            const userMenu = document.getElementById('user-menu');
+            if (userMenu) userMenu.style.display = 'none';
+        }
         if (e.target.classList.contains('modal')) {
             closeModal(e.target.id);
         }
@@ -58,6 +62,11 @@ function setupEventListeners() {
 // --- UI Functions ---
 function toggleNewMenu() {
     const menu = document.getElementById('new-menu');
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+}
+
+function toggleUserMenu() {
+    const menu = document.getElementById('user-menu');
     menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
 }
 
@@ -617,6 +626,7 @@ window.downloadItem = downloadItem;
 window.deleteItem = deleteItem;
 window.logout = logout;
 window.toggleNewMenu = toggleNewMenu;
+window.toggleUserMenu = toggleUserMenu;
 window.showCreateFolderModal = showCreateFolderModal;
 window.closeModal = closeModal;
 window.createFolder = createFolder;

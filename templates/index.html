@@ -47,7 +47,15 @@
                     <button class="icon-btn" title="Google Apps"><i class="fa-solid fa-grip"></i></button>
                 </div>
                 <div class="user-profile">
-                    <div class="avatar">U</div>
+                    <div class="avatar" onclick="toggleUserMenu()">U</div>
+                    <div id="user-menu" class="user-menu">
+                        <div class="item" onclick="alert('Profile settings not implemented')">
+                            <i class="fa-solid fa-user"></i> Profile
+                        </div>
+                        <div class="item danger" onclick="logout()">
+                            <i class="fa-solid fa-right-from-bracket"></i> Logout
+                        </div>
+                    </div>
                 </div>
             </div>
         </header>
@@ -213,8 +221,10 @@
         <div class="upload-header">
             <span id="upload-header-text">Uploading 1 item</span>
             <div class="upload-header-actions">
-                <button class="icon-btn small" onclick="toggleUploadContainer()"><i class="fa-solid fa-chevron-down" id="upload-toggle-icon"></i></button>
-                <button class="icon-btn small" onclick="closeUploadContainer()"><i class="fa-solid fa-xmark"></i></button>
+                <button class="icon-btn small" onclick="toggleUploadContainer()"><i class="fa-solid fa-chevron-down"
+                        id="upload-toggle-icon"></i></button>
+                <button class="icon-btn small" onclick="closeUploadContainer()"><i
+                        class="fa-solid fa-xmark"></i></button>
             </div>
         </div>
         <div class="upload-body" id="upload-list">

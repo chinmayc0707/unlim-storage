@@ -21,8 +21,7 @@ async function sendCode() {
 
         const data = await response.json();
         if (response.ok) {
-            document.getElementById('step-phone').style.display = 'none';
-            document.getElementById('step-code').style.display = 'block';
+            showStep('step-code');
             document.getElementById('code-input').focus();
         } else {
             errorDiv.textContent = data.error || 'Failed to send code';
@@ -62,8 +61,7 @@ async function verifyCode() {
             localStorage.setItem('token', data.token);
             window.location.href = '/';
         } else if (response.status === 401 && data.status === 'password_required') {
-            document.getElementById('step-code').style.display = 'none';
-            document.getElementById('step-password').style.display = 'block';
+            showStep('step-password');
             document.getElementById('password-input').focus();
         } else {
             errorDiv.textContent = data.error || 'Invalid code';
