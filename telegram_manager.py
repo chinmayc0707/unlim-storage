@@ -183,23 +183,27 @@ class TelegramManager:
                 if self.client:
                     self.loop.run_until_complete(self.client.disconnect())
 
+import threading
+
 # Global registry for active managers
 # Key: user_id (str or int) or phone (str) for pending logins
 _active_managers = {}
+_managers_lock = threading.Lock()
 
 def get_manager(key):
     """
     Get or create a TelegramManager for the given key (user_id or phone).
     """
     key = str(key)
-    if key not in _active_managers:
-        session_name = f"user_{key}"
-        _active_managers[key] = TelegramManager(session_name)
-    return _active_managers[key]
+    with _managers_lock:
+        if key not in _active_managers:
+            session_name = f"user_{key}"
+            _active_managers[key] = TelegramManager(session_name)
+        return _active_managers[key]
 
 def remove_manager(key):
     key = str(key)
-    if key in _active_managers:
-        manager = _active_managers[key]
-        # We might want to close the loop/client here if needed
-        del _active_managers[key]
+    with _managers_lock:
+        if key in _active_managers:
+            # We might want to close the loop/client here if needed
+            del _active_managers[key]

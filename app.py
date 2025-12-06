@@ -1,9 +1,12 @@
-from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for, session
+from flask import Flask, render_template, jsonify, request, send_file, redirect, url_for
 from config import Config
 from models import db, File, Folder, User, generate_codeword
 from telegram_manager import get_manager, remove_manager
 import os
 import shutil
+import jwt
+from functools import wraps
+import datetime
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -16,39 +19,63 @@ with app.app_context():
     # In production, use migrations
     db.create_all()
 
-# Helper to get current user ID
+def generate_token(user_id):
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+    }
+    return jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
+
+def decode_token(token):
+    try:
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        return payload['user_id']
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+# Helper to get current user ID from Request Header or Query Param
 def get_current_user_id():
-    return session.get('user_id')
+    # 1. Try Authorization header
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        try:
+            token = auth_header.split(" ")[1]
+            return decode_token(token)
+        except IndexError:
+            pass
+
+    # 2. Try query parameter (for downloads)
+    token = request.args.get('token')
+    if token:
+        return decode_token(token)
+
+    return None
 
 # Helper to get current manager
 def get_current_manager():
     user_id = get_current_user_id()
     if user_id:
         manager = get_manager(user_id)
-        # Ensure connected if we have a user_id (should be authorized)
-        # However, checking connection every time might be slow?
-        # Let's rely on manager state
         return manager
     return None
 
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user_id = get_current_user_id()
+        if not user_id:
+            return jsonify({'error': 'Not authenticated'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/')
 def index():
-    user_id = get_current_user_id()
-    if not user_id:
-        return redirect(url_for('login_page'))
-
-    manager = get_current_manager()
-    if not manager.connect(): # verify authorization
-        # Session invalid?
-        session.pop('user_id', None)
-        return redirect(url_for('login_page'))
-
     return render_template('index.html')
 
 @app.route('/login')
 def login_page():
-    if get_current_user_id():
-        return redirect(url_for('index'))
     return render_template('login.html')
 
 # --- Auth Routes ---
@@ -68,13 +95,16 @@ def login():
         return jsonify({'error': 'Phone number required'}), 400
 
     # Use phone as temporary key for manager during login
+    # In a real app, we should verify that this request comes from the same user flow
+    # Since we don't have a session, we rely on the phone number.
+    # We could issue a temporary token here, but for simplicity, let's assume
+    # the client will send the same phone number for verification.
+
     manager = get_manager(f"pending_{phone}")
 
     success, error = manager.send_code(phone)
     if success:
-        # Store phone in session to retrieve the correct manager in verify step
-        session['pending_phone'] = phone
-        return jsonify({'status': 'code_sent'})
+        return jsonify({'status': 'code_sent', 'phone': phone})
     else:
         remove_manager(f"pending_{phone}")
         return jsonify({'error': error}), 400
@@ -83,12 +113,12 @@ def login():
 def verify():
     code = request.json.get('code')
     password = request.json.get('password')
-    phone = session.get('pending_phone')
+    phone = request.json.get('phone') # Phone must be passed back
 
     if not code:
         return jsonify({'error': 'Code required'}), 400
     if not phone:
-        return jsonify({'error': 'Session expired, please login again'}), 400
+        return jsonify({'error': 'Phone number required'}), 400
 
     # Retrieve the pending manager
     pending_key = f"pending_{phone}"
@@ -106,35 +136,27 @@ def verify():
             db.session.commit()
 
         # Migrate the session file from pending to user_id
-        # We need to close the pending manager and rename the session file
-        # But Telethon holds a lock.
-        # Alternatively, we can just use the user_id as key for future,
-        # but we need to move the session file content.
 
-        # Simpler approach:
         # 1. Close pending manager
-        remove_manager(pending_key) # This effectively just removes from cache, but doesn't close robustly in my impl
-        # I need to ensure the client is disconnected.
-        # My remove_manager just deletes from dict.
-        # Let's fix telegram_manager.py to properly close?
-        # Or I can just access it here.
-        manager.client.loop.run_until_complete(manager.client.disconnect())
+        remove_manager(pending_key)
+        try:
+            manager.client.loop.run_until_complete(manager.client.disconnect())
+        except:
+            pass
 
         # 2. Rename session file
         old_session = os.path.join('sessions', f"user_pending_{phone}.session")
         new_session = os.path.join('sessions', f"user_{user.id}.session")
 
         if os.path.exists(old_session):
-             # If target exists (re-login), replace it
             if os.path.exists(new_session):
                 os.remove(new_session)
             os.rename(old_session, new_session)
 
-        # 3. Set user_id in session
-        session['user_id'] = user.id
-        session.pop('pending_phone', None)
+        # 3. Generate Token
+        token = generate_token(user.id)
 
-        return jsonify({'status': 'authenticated'})
+        return jsonify({'status': 'authenticated', 'token': token})
 
     elif error == 'PASSWORD_REQUIRED':
         return jsonify({'status': 'password_required'}), 401
@@ -144,23 +166,21 @@ def verify():
 @app.route('/api/auth/logout', methods=['POST'])
 def logout():
     manager = get_current_manager()
+    user_id = get_current_user_id()
     if manager:
         try:
             manager.logout()
-            remove_manager(get_current_user_id())
+            remove_manager(user_id)
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    session.clear()
     return jsonify({'status': 'logged_out'})
 
 # --- File Routes ---
 @app.route('/api/files')
+@token_required
 def list_files():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     parent_id = request.args.get('parent_id')
     if parent_id == 'null' or parent_id == '':
         parent_id = None
@@ -172,11 +192,9 @@ def list_files():
     return jsonify(result)
 
 @app.route('/api/upload', methods=['POST'])
+@token_required
 def upload_file():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     manager = get_current_manager()
 
     if 'file' not in request.files:
@@ -219,11 +237,9 @@ def upload_file():
             os.remove(temp_path)
 
 @app.route('/api/download/<file_id>')
+@token_required
 def download_file(file_id):
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     file = File.query.filter_by(id=file_id, user_id=user_id).first_or_404()
 
     manager = get_current_manager()
@@ -243,11 +259,9 @@ def download_file(file_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/folders', methods=['POST'])
+@token_required
 def create_folder():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     data = request.json
     name = data.get('name')
     parent_id = data.get('parent_id')
@@ -263,11 +277,9 @@ def create_folder():
     return jsonify(new_folder.to_dict()), 201
 
 @app.route('/api/move', methods=['POST'])
+@token_required
 def move_item():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     data = request.json
     items = data.get('items')
     new_parent_id = data.get('new_parent_id')
@@ -355,11 +367,9 @@ def copy_recursive(item, new_parent_id, user_id, manager):
             copy_recursive(child, new_folder.id, user_id, manager)
 
 @app.route('/api/copy', methods=['POST'])
+@token_required
 def copy_item():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     manager = get_current_manager()
 
     data = request.json
@@ -396,11 +406,9 @@ def copy_item():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/rename', methods=['POST'])
+@token_required
 def rename_item():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     data = request.json
     item_id = data.get('id')
     item_type = data.get('type')
@@ -439,11 +447,9 @@ def delete_folder_recursive(folder_id, user_id, manager):
         db.session.delete(folder)
 
 @app.route('/api/delete', methods=['POST'])
+@token_required
 def delete_item():
     user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
     manager = get_current_manager()
 
     data = request.json

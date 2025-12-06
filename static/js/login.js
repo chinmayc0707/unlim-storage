@@ -39,6 +39,7 @@ async function verifyCode() {
     const code = document.getElementById('code-input').value;
     const errorDiv = document.getElementById('login-error');
     const btn = document.querySelector('#step-code button');
+    const phone = document.getElementById('phone-input').value;
 
     if (!code) {
         errorDiv.textContent = 'Please enter the code';
@@ -53,11 +54,12 @@ async function verifyCode() {
         const response = await fetch('/api/auth/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
+            body: JSON.stringify({ code, phone })
         });
 
         const data = await response.json();
         if (response.ok) {
+            localStorage.setItem('token', data.token);
             window.location.href = '/';
         } else if (response.status === 401 && data.status === 'password_required') {
             document.getElementById('step-code').style.display = 'none';
@@ -77,6 +79,7 @@ async function verifyCode() {
 async function verifyPassword() {
     const code = document.getElementById('code-input').value;
     const password = document.getElementById('password-input').value;
+    const phone = document.getElementById('phone-input').value;
     const errorDiv = document.getElementById('login-error');
     const btn = document.querySelector('#step-password button');
 
@@ -88,11 +91,12 @@ async function verifyPassword() {
         const response = await fetch('/api/auth/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code, password })
+            body: JSON.stringify({ code, password, phone })
         });
 
         const data = await response.json();
         if (response.ok) {
+            localStorage.setItem('token', data.token);
             window.location.href = '/';
         } else {
             errorDiv.textContent = data.error || 'Invalid password';
