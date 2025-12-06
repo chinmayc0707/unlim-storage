@@ -7,10 +7,13 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'you-will-never-guess'
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or 'sqlite:///drive.db'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    
+
     # Telegram Config
     API_ID = os.environ.get('API_ID')
     API_HASH = os.environ.get('API_HASH')
     BOT_TOKEN = os.environ.get('BOT_TOKEN')
     # Chat ID to store files (can be a channel or "me")
     STORAGE_CHAT_ID = os.environ.get('STORAGE_CHAT_ID') or "me"
+
+    # JWT Config
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY') or 'jwt-secret-key'

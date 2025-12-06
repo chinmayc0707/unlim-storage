@@ -4,6 +4,9 @@ from models import db, File, Folder, User, generate_codeword
 from telegram_manager import get_manager, remove_manager
 import os
 import shutil
+import jwt
+import datetime
+from functools import wraps
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -16,50 +19,70 @@ with app.app_context():
     # In production, use migrations
     db.create_all()
 
-# Helper to get current user ID
-def get_current_user_id():
-    return session.get('user_id')
+# JWT Token Verification Decorator
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        # Check if token is in Authorization header
+        if 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split(" ")[1]
 
-# Helper to get current manager
-def get_current_manager():
-    user_id = get_current_user_id()
+        # Also check query param for download links
+        if not token and 'token' in request.args:
+            token = request.args['token']
+
+        if not token:
+            return jsonify({'error': 'Token is missing!'}), 401
+
+        try:
+            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+            current_user_id = data['user_id']
+            # We could fetch the user from DB to verify, but ID is enough for now
+            # current_user = User.query.get(current_user_id)
+        except Exception as e:
+            return jsonify({'error': 'Token is invalid!'}), 401
+
+        return f(current_user_id, *args, **kwargs)
+
+    return decorated
+
+# Helper to get current manager (using user_id)
+def get_user_manager(user_id):
     if user_id:
         manager = get_manager(user_id)
-        # Ensure connected if we have a user_id (should be authorized)
-        # However, checking connection every time might be slow?
-        # Let's rely on manager state
         return manager
     return None
 
 @app.route('/')
 def index():
-    user_id = get_current_user_id()
-    if not user_id:
-        return redirect(url_for('login_page'))
-
-    manager = get_current_manager()
-    if not manager.connect(): # verify authorization
-        # Session invalid?
-        session.pop('user_id', None)
-        return redirect(url_for('login_page'))
-
+    # Index page serves the frontend app.
+    # Frontend will check for token and redirect to login if missing.
     return render_template('index.html')
 
 @app.route('/login')
 def login_page():
-    if get_current_user_id():
-        return redirect(url_for('index'))
     return render_template('login.html')
 
 # --- Auth Routes ---
 @app.route('/api/auth/status')
 def auth_status():
-    user_id = get_current_user_id()
-    if not user_id:
+    # This endpoint checks if the token is valid and session is active
+    # Frontend sends token in header
+    token = None
+    if 'Authorization' in request.headers:
+        token = request.headers['Authorization'].split(" ")[1]
+
+    if not token:
         return jsonify({'authenticated': False})
 
-    manager = get_current_manager()
-    return jsonify({'authenticated': manager.connect()})
+    try:
+        data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+        user_id = data['user_id']
+        manager = get_manager(user_id)
+        return jsonify({'authenticated': manager.connect()})
+    except:
+        return jsonify({'authenticated': False})
 
 @app.route('/api/auth/login', methods=['POST'])
 def login():
@@ -73,6 +96,7 @@ def login():
     success, error = manager.send_code(phone)
     if success:
         # Store phone in session to retrieve the correct manager in verify step
+        # We still use session for this temporary state as it's pre-JWT
         session['pending_phone'] = phone
         return jsonify({'status': 'code_sent'})
     else:
@@ -105,36 +129,28 @@ def verify():
             db.session.add(user)
             db.session.commit()
 
-        # Migrate the session file from pending to user_id
-        # We need to close the pending manager and rename the session file
-        # But Telethon holds a lock.
-        # Alternatively, we can just use the user_id as key for future,
-        # but we need to move the session file content.
-
-        # Simpler approach:
-        # 1. Close pending manager
-        remove_manager(pending_key) # This effectively just removes from cache, but doesn't close robustly in my impl
-        # I need to ensure the client is disconnected.
-        # My remove_manager just deletes from dict.
-        # Let's fix telegram_manager.py to properly close?
-        # Or I can just access it here.
+        # Migrate the session file
         manager.client.loop.run_until_complete(manager.client.disconnect())
 
-        # 2. Rename session file
         old_session = os.path.join('sessions', f"user_pending_{phone}.session")
         new_session = os.path.join('sessions', f"user_{user.id}.session")
 
         if os.path.exists(old_session):
-             # If target exists (re-login), replace it
             if os.path.exists(new_session):
                 os.remove(new_session)
             os.rename(old_session, new_session)
 
-        # 3. Set user_id in session
-        session['user_id'] = user.id
+        # Generate JWT
+        token = jwt.encode({
+            'user_id': user.id,
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(days=7)
+        }, app.config['JWT_SECRET_KEY'], algorithm="HS256")
+
+        # Cleanup
+        remove_manager(pending_key)
         session.pop('pending_phone', None)
 
-        return jsonify({'status': 'authenticated'})
+        return jsonify({'status': 'authenticated', 'token': token})
 
     elif error == 'PASSWORD_REQUIRED':
         return jsonify({'status': 'password_required'}), 401
@@ -142,42 +158,36 @@ def verify():
         return jsonify({'error': error}), 400
 
 @app.route('/api/auth/logout', methods=['POST'])
-def logout():
-    manager = get_current_manager()
+@token_required
+def logout(current_user_id):
+    manager = get_user_manager(current_user_id)
     if manager:
         try:
             manager.logout()
-            remove_manager(get_current_user_id())
+            remove_manager(current_user_id)
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-    session.clear()
     return jsonify({'status': 'logged_out'})
 
 # --- File Routes ---
 @app.route('/api/files')
-def list_files():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
+@token_required
+def list_files(current_user_id):
     parent_id = request.args.get('parent_id')
     if parent_id == 'null' or parent_id == '':
         parent_id = None
 
-    folders = Folder.query.filter_by(parent_id=parent_id, user_id=user_id).all()
-    files = File.query.filter_by(parent_id=parent_id, user_id=user_id).all()
+    folders = Folder.query.filter_by(parent_id=parent_id, user_id=current_user_id).all()
+    files = File.query.filter_by(parent_id=parent_id, user_id=current_user_id).all()
 
     result = [f.to_dict() for f in folders] + [f.to_dict() for f in files]
     return jsonify(result)
 
 @app.route('/api/upload', methods=['POST'])
-def upload_file():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
-    manager = get_current_manager()
+@token_required
+def upload_file(current_user_id):
+    manager = get_user_manager(current_user_id)
 
     if 'file' not in request.files:
         return jsonify({'error': 'No file part'}), 400
@@ -200,7 +210,7 @@ def upload_file():
             id=codeword,
             name=file.filename,
             parent_id=parent_id,
-            user_id=user_id,
+            user_id=current_user_id,
             size=os.path.getsize(temp_path),
             mime_type=file.content_type
         )
@@ -219,14 +229,11 @@ def upload_file():
             os.remove(temp_path)
 
 @app.route('/api/download/<file_id>')
-def download_file(file_id):
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
+@token_required
+def download_file(current_user_id, file_id):
+    file = File.query.filter_by(id=file_id, user_id=current_user_id).first_or_404()
 
-    file = File.query.filter_by(id=file_id, user_id=user_id).first_or_404()
-
-    manager = get_current_manager()
+    manager = get_user_manager(current_user_id)
 
     temp_path = os.path.join('tmp', f"download_{file_id}")
     os.makedirs('tmp', exist_ok=True)
@@ -243,11 +250,8 @@ def download_file(file_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/folders', methods=['POST'])
-def create_folder():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
+@token_required
+def create_folder(current_user_id):
     data = request.json
     name = data.get('name')
     parent_id = data.get('parent_id')
@@ -256,18 +260,15 @@ def create_folder():
     if not name:
         return jsonify({'error': 'Name required'}), 400
 
-    new_folder = Folder(name=name, parent_id=parent_id, user_id=user_id)
+    new_folder = Folder(name=name, parent_id=parent_id, user_id=current_user_id)
     db.session.add(new_folder)
     db.session.commit()
 
     return jsonify(new_folder.to_dict()), 201
 
 @app.route('/api/move', methods=['POST'])
-def move_item():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
+@token_required
+def move_item(current_user_id):
     data = request.json
     items = data.get('items')
     new_parent_id = data.get('new_parent_id')
@@ -295,16 +296,16 @@ def move_item():
 
                 # Check if new_parent_id is a child of item_id
                 # Only check folders belonging to user
-                current = Folder.query.filter_by(id=new_parent_id, user_id=user_id).first()
+                current = Folder.query.filter_by(id=new_parent_id, user_id=current_user_id).first()
                 while current:
                     if current.id == item_id:
                         return jsonify({'error': 'Cannot move folder into its own subfolder'}), 400
-                    current = Folder.query.filter_by(id=current.parent_id, user_id=user_id).first() if current.parent_id else None
+                    current = Folder.query.filter_by(id=current.parent_id, user_id=current_user_id).first() if current.parent_id else None
 
             if item_type == 'folder':
-                item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+                item = Folder.query.filter_by(id=item_id, user_id=current_user_id).first_or_404()
             else:
-                item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+                item = File.query.filter_by(id=item_id, user_id=current_user_id).first_or_404()
 
             item.parent_id = new_parent_id
 
@@ -355,12 +356,9 @@ def copy_recursive(item, new_parent_id, user_id, manager):
             copy_recursive(child, new_folder.id, user_id, manager)
 
 @app.route('/api/copy', methods=['POST'])
-def copy_item():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
-    manager = get_current_manager()
+@token_required
+def copy_item(current_user_id):
+    manager = get_user_manager(current_user_id)
 
     data = request.json
     items = data.get('items')
@@ -383,11 +381,11 @@ def copy_item():
             item_type = item_data.get('type')
 
             if item_type == 'folder':
-                item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+                item = Folder.query.filter_by(id=item_id, user_id=current_user_id).first_or_404()
             else:
-                item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+                item = File.query.filter_by(id=item_id, user_id=current_user_id).first_or_404()
 
-            copy_recursive(item, new_parent_id, user_id, manager)
+            copy_recursive(item, new_parent_id, current_user_id, manager)
 
         db.session.commit()
         return jsonify({'status': 'success'})
@@ -396,11 +394,8 @@ def copy_item():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/rename', methods=['POST'])
-def rename_item():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
+@token_required
+def rename_item(current_user_id):
     data = request.json
     item_id = data.get('id')
     item_type = data.get('type')
@@ -410,9 +405,9 @@ def rename_item():
         return jsonify({'error': 'New name required'}), 400
 
     if item_type == 'folder':
-        item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+        item = Folder.query.filter_by(id=item_id, user_id=current_user_id).first_or_404()
     else:
-        item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+        item = File.query.filter_by(id=item_id, user_id=current_user_id).first_or_404()
 
     item.name = new_name
     db.session.commit()
@@ -439,12 +434,9 @@ def delete_folder_recursive(folder_id, user_id, manager):
         db.session.delete(folder)
 
 @app.route('/api/delete', methods=['POST'])
-def delete_item():
-    user_id = get_current_user_id()
-    if not user_id:
-        return jsonify({'error': 'Not authenticated'}), 401
-
-    manager = get_current_manager()
+@token_required
+def delete_item(current_user_id):
+    manager = get_user_manager(current_user_id)
 
     data = request.json
     items = data.get('items')
@@ -464,9 +456,9 @@ def delete_item():
             item_type = item.get('type')
 
             if item_type == 'folder':
-                delete_folder_recursive(item_id, user_id, manager)
+                delete_folder_recursive(item_id, current_user_id, manager)
             else:
-                file = File.query.filter_by(id=item_id, user_id=user_id).first()
+                file = File.query.filter_by(id=item_id, user_id=current_user_id).first()
                 if file:
                     try:
                         manager.delete_file(file.message_ids)

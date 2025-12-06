@@ -108,10 +108,15 @@ async function createFolder() {
 
     if (!name) return;
 
+    const token = localStorage.getItem('token');
+
     try {
         const response = await fetch('/api/folders', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 name: name,
                 parent_id: currentFolderId
@@ -147,9 +152,18 @@ async function fetchFiles(folderId = currentFolderId) {
     }
 
     try {
-        const response = await fetch(`/api/files?parent_id=${folderId || 'null'}`);
+        const token = localStorage.getItem('token');
+        if (!token) {
+            window.location.href = '/login';
+            return;
+        }
+
+        const response = await fetch(`/api/files?parent_id=${folderId || 'null'}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
 
         if (response.status === 401) {
+            localStorage.removeItem('token');
             window.location.href = '/login';
             return;
         }
@@ -309,13 +323,7 @@ function createUploadItemUI(file) {
     item.className = 'upload-item';
     item.id = `upload-${file.name}-${Date.now()}`;
 
-    // Update header count
-    const activeUploads = document.querySelectorAll('.upload-item .upload-progress-bar:not([style*="background-color: rgb(30, 142, 62)"])').length + 1;
-    // Note: The selector above is a bit brittle. A simpler way is to maintain a counter or check pending items.
-    // For now, let's just count all items in list as "items".
-    // Better: Update count based on list children.
-    const totalItems = list.children.length + 1;
-    document.getElementById('upload-header-text').textContent = `Uploading ${totalItems} item${totalItems !== 1 ? 's' : ''}`;
+    updateUploadHeader();
 
     item.innerHTML = `
         <div class="upload-item-header">
@@ -344,6 +352,7 @@ function formatSize(bytes) {
 }
 
 function uploadFile(file) {
+    const token = localStorage.getItem('token');
     const uiItem = createUploadItemUI(file);
     const progressBar = uiItem.querySelector('.upload-progress-bar');
     const sizeText = uiItem.querySelector('.upload-size');
@@ -388,6 +397,8 @@ function uploadFile(file) {
             statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
             sizeText.textContent = 'Upload complete';
             speedText.textContent = '';
+            uiItem.dataset.status = 'complete';
+            updateUploadHeader();
             fetchFiles(); // Refresh file list
         } else if (xhr.status === 401) {
             window.location.href = '/login';
@@ -396,6 +407,8 @@ function uploadFile(file) {
             sizeText.textContent = 'Upload failed';
             speedText.textContent = '';
             progressBar.style.backgroundColor = '#d93025'; // Red
+            uiItem.dataset.status = 'error';
+            updateUploadHeader();
         }
     });
 
@@ -404,16 +417,35 @@ function uploadFile(file) {
         sizeText.textContent = 'Network error';
         speedText.textContent = '';
         progressBar.style.backgroundColor = '#d93025';
+        uiItem.dataset.status = 'error';
+        updateUploadHeader();
     });
 
     xhr.addEventListener('abort', () => {
         statusIcon.innerHTML = '<i class="fa-solid fa-ban"></i>';
         sizeText.textContent = 'Cancelled';
         speedText.textContent = '';
+        uiItem.dataset.status = 'cancelled';
+        updateUploadHeader();
     });
 
     xhr.open('POST', '/api/upload');
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.send(formData);
+}
+
+function updateUploadHeader() {
+    const items = document.querySelectorAll('.upload-item');
+    let activeCount = 0;
+
+    items.forEach(item => {
+        if (!item.dataset.status) {
+            activeCount++;
+        }
+    });
+
+    const text = activeCount === 0 ? 'Uploads complete' : `Uploading ${activeCount} item${activeCount !== 1 ? 's' : ''}`;
+    document.getElementById('upload-header-text').textContent = text;
 }
 
 function updateBreadcrumbs() {
@@ -457,7 +489,8 @@ function hideContextMenu() {
 function downloadItem() {
     if (!contextMenuItem || contextMenuItem.type === 'folder') return;
 
-    window.location.href = `/api/download/${contextMenuItem.id}`;
+    const token = localStorage.getItem('token');
+    window.location.href = `/api/download/${contextMenuItem.id}?token=${token}`;
     hideContextMenu();
 }
 
@@ -491,10 +524,15 @@ async function deleteItem() {
 
     if (!confirm(confirmMsg)) return;
 
+    const token = localStorage.getItem('token');
+
     try {
         await fetch('/api/delete', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 items: itemsToDelete
             })
@@ -534,10 +572,15 @@ async function renameItem() {
         return;
     }
 
+    const token = localStorage.getItem('token');
+
     try {
         const response = await fetch('/api/rename', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 id: contextMenuItem.id,
                 type: contextMenuItem.type,
@@ -560,12 +603,18 @@ async function renameItem() {
 async function logout() {
     if (!confirm('Are you sure you want to logout?')) return;
 
+    const token = localStorage.getItem('token');
+
     try {
         const response = await fetch('/api/auth/logout', {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
         });
 
         if (response.ok) {
+            localStorage.removeItem('token');
             window.location.href = '/login';
         } else {
             alert('Logout failed');
@@ -593,6 +642,7 @@ window.renameItem = renameItem;
 window.openDestinationModal = openDestinationModal;
 window.confirmMove = confirmMove;
 window.confirmCopy = confirmCopy;
+
 function openDestinationModal(action) {
     if (!contextMenuItem) return;
 
@@ -640,7 +690,10 @@ async function fetchDestinationFolders(parentId) {
     list.innerHTML = '<div style="padding: 10px;">Loading...</div>';
 
     try {
-        const response = await fetch(`/api/files?parent_id=${parentId || 'null'}`);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/files?parent_id=${parentId || 'null'}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
         const items = await response.json();
         const folders = items.filter(item => item.type === 'folder');
 
@@ -717,10 +770,15 @@ async function confirmMove() {
     const currentDest = destinationPath[destinationPath.length - 1];
     const newParentId = currentDest.id;
 
+    const token = localStorage.getItem('token');
+
     try {
         const response = await fetch('/api/move', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 items: actionItems,
                 new_parent_id: newParentId
@@ -752,10 +810,15 @@ async function confirmCopy() {
     btn.textContent = 'Copying...';
     btn.disabled = true;
 
+    const token = localStorage.getItem('token');
+
     try {
         const response = await fetch('/api/copy', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({
                 items: actionItems,
                 new_parent_id: newParentId
