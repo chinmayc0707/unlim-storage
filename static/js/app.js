@@ -111,7 +111,10 @@ async function createFolder() {
     try {
         const response = await fetch('/api/folders', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({
                 name: name,
                 parent_id: currentFolderId
@@ -147,7 +150,11 @@ async function fetchFiles(folderId = currentFolderId) {
     }
 
     try {
-        const response = await fetch(`/api/files?parent_id=${folderId || 'null'}`);
+        const response = await fetch(`/api/files?parent_id=${folderId || 'null'}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
 
         if (response.status === 401) {
             window.location.href = '/login';
@@ -413,6 +420,7 @@ function uploadFile(file) {
     });
 
     xhr.open('POST', '/api/upload');
+    xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('token')}`);
     xhr.send(formData);
 }
 
@@ -457,7 +465,24 @@ function hideContextMenu() {
 function downloadItem() {
     if (!contextMenuItem || contextMenuItem.type === 'folder') return;
 
-    window.location.href = `/api/download/${contextMenuItem.id}`;
+    const token = localStorage.getItem('token');
+
+    // Use the token as a query parameter
+    // Note: In production, a short-lived one-time token is better for security,
+    // but reusing the JWT in query param is acceptable here as it uses HTTPS (in prod)
+    // and solves the large file issue.
+
+    const downloadUrl = `/api/download/${contextMenuItem.id}?token=${token}`;
+
+    // Trigger download by navigation (or hidden iframe/link)
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = downloadUrl;
+    a.download = contextMenuItem.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
     hideContextMenu();
 }
 
@@ -494,7 +519,10 @@ async function deleteItem() {
     try {
         await fetch('/api/delete', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({
                 items: itemsToDelete
             })
@@ -537,7 +565,10 @@ async function renameItem() {
     try {
         const response = await fetch('/api/rename', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({
                 id: contextMenuItem.id,
                 type: contextMenuItem.type,
@@ -562,10 +593,14 @@ async function logout() {
 
     try {
         const response = await fetch('/api/auth/logout', {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
         });
 
         if (response.ok) {
+            localStorage.removeItem('token');
             window.location.href = '/login';
         } else {
             alert('Logout failed');
@@ -640,7 +675,11 @@ async function fetchDestinationFolders(parentId) {
     list.innerHTML = '<div style="padding: 10px;">Loading...</div>';
 
     try {
-        const response = await fetch(`/api/files?parent_id=${parentId || 'null'}`);
+        const response = await fetch(`/api/files?parent_id=${parentId || 'null'}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
         const items = await response.json();
         const folders = items.filter(item => item.type === 'folder');
 
@@ -720,7 +759,10 @@ async function confirmMove() {
     try {
         const response = await fetch('/api/move', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({
                 items: actionItems,
                 new_parent_id: newParentId
@@ -755,7 +797,10 @@ async function confirmCopy() {
     try {
         const response = await fetch('/api/copy', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
             body: JSON.stringify({
                 items: actionItems,
                 new_parent_id: newParentId
