@@ -9,8 +9,9 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Telegram Config
-    API_ID = os.environ.get('API_ID') or 27074457
-    API_HASH = os.environ.get('API_HASH') or 'ce5c2fa2973a1385e8290f0fa8cb7459'
+    API_ID = os.environ.get('API_ID')
+    API_HASH = os.environ.get('API_HASH')
     BOT_TOKEN = os.environ.get('BOT_TOKEN')
     # Chat ID to store files (can be a channel or "me")
     STORAGE_CHAT_ID = os.environ.get('STORAGE_CHAT_ID') or "me"
+
