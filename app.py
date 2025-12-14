@@ -13,6 +13,9 @@ app.config.from_object(Config)
 # Initialize DB
 db.init_app(app)
 
+# Trigger new commit for GitHub sync
+
+
 with app.app_context():
     # Drop everything to handle schema changes for this task
     # In production, use migrations
