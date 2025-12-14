@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flask Drive</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&family=Roboto:wght@400;500&display=swap"
+        rel="stylesheet">
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        main {
+            user-select: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="top-bar">
+            <div class="logo-section">
+                <div class="logo">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/d/da/Google_Drive_logo_%282020%29.svg"
+                        alt="Logo" style="width: 40px; height: 40px;">
+                    <span>Drive</span>
+                </div>
+            </div>
+
+            <div class="search-section">
+                <div class="search-bar">
+                    <button class="search-icon-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    <input type="text" placeholder="Search in Drive">
+                    <button class="filter-icon-btn"><i class="fa-solid fa-sliders"></i></button>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <button class="icon-btn" title="Offline Support"><i class="fa-regular fa-circle-check"></i></button>
+                <button class="icon-btn" title="Support"><i class="fa-regular fa-circle-question"></i></button>
+
+                <button class="icon-btn" title="Settings"><i class="fa-solid fa-gear"></i></button>
+                <div class="apps-btn">
+                    <button class="icon-btn" title="Google Apps"><i class="fa-solid fa-grip"></i></button>
+                </div>
+                <div class="user-profile">
+                    <div class="avatar">U</div>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-body">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="new-btn-container">
+                    <button class="new-btn" onclick="toggleNewMenu()">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>New</span>
+                    </button>
+                    <div id="new-menu" class="new-menu">
+                        <div class="item" onclick="document.getElementById('file-input').click()">
+                            <i class="fa-solid fa-file-arrow-up"></i> File upload
+                        </div>
+                        <div class="item" onclick="showCreateFolderModal()">
+                            <i class="fa-solid fa-folder-plus"></i> New folder
+                        </div>
+                    </div>
+                </div>
+
+                <nav class="nav-links">
+                    <a href="#" class="active" onclick="navigateTo(null)">
+                        <i class="fa-solid fa-hard-drive"></i>
+                        <span>My Drive</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-solid fa-laptop"></i>
+                        <span>Computers</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-solid fa-user-group"></i>
+                        <span>Shared with me</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-solid fa-clock"></i>
+                        <span>Recent</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-regular fa-star"></i>
+                        <span>Starred</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <span>Spam</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-regular fa-trash-can"></i>
+                        <span>Trash</span>
+                    </a>
+                    <a href="#">
+                        <i class="fa-solid fa-cloud"></i>
+                        <span>Storage</span>
+                    </a>
+                </nav>
+
+                <div class="storage-widget">
+                    <div class="progress-bar">
+                        <div class="progress" style="width: 0%;"></div>
+                    </div>
+                    <div class="storage-text">0 GB of 15 GB used</div>
+                    <button class="get-storage-btn">Get more storage</button>
+
+                    <button class="icon-btn" title="Logout" onclick="logout()"><i
+                            class="fa-solid fa-right-from-bracket"></i>logout</button>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="content">
+                <div class="content-header">
+                    <div class="breadcrumbs" id="breadcrumbs">
+                        <span class="crumb" onclick="navigateTo(null)">My Drive</span>
+                    </div>
+                    <div class="view-controls">
+                        <button class="icon-btn" id="view-toggle-btn" onclick="toggleView()" title="List view">
+                            <i class="fa-solid fa-list"></i>
+                        </button>
+                        <button class="icon-btn" title="View details">
+                            <i class="fa-solid fa-circle-info"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="file-area">
+                    <div class="section-title">Files</div>
+                    <!-- Header row for list view -->
+                    <div class="list-header" id="list-header" style="display: none;">
+                        <div class="col-name">Name</div>
+                        <div class="col-owner">Owner</div>
+                        <div class="col-modified">Last modified</div>
+                        <div class="col-size">File size</div>
+                    </div>
+
+                    <div class="file-grid" id="file-grid">
+                        <!-- Files will be populated here by JS -->
+                        <div class="file-card">
+                            <div class="icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                            <div class="name">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Hidden File Input -->
+    <input type="file" id="file-input" style="display: none;">
+
+    <!-- Context Menu -->
+    <div id="context-menu" class="context-menu">
+        <div class="item" onclick="downloadItem()"><i class="fa-solid fa-download"></i> Download</div>
+        <div class="item" onclick="showRenameModal()"><i class="fa-solid fa-pen"></i> Rename</div>
+        <div class="item" onclick="openDestinationModal('move')"><i class="fa-solid fa-arrow-right-to-bracket"></i> Move
+            to</div>
+        <div class="item" onclick="openDestinationModal('copy')"><i class="fa-regular fa-copy"></i> Make a copy</div>
+        <div class="item" onclick="deleteItem()"><i class="fa-solid fa-trash"></i> Delete</div>
+    </div>
+
+    <!-- Create Folder Modal -->
+    <div id="folder-modal" class="modal">
+        <div class="modal-content">
+            <h2>New folder</h2>
+            <input type="text" id="folder-name-input" placeholder="Untitled folder">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('folder-modal')">Cancel</button>
+                <button class="modal-btn primary" onclick="createFolder()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div id="rename-modal" class="modal">
+        <div class="modal-content">
+            <h2>Rename</h2>
+            <input type="text" id="rename-input">
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('rename-modal')">Cancel</button>
+                <button class="modal-btn primary" onclick="renameItem()">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Destination Picker Modal -->
+    <div id="destination-modal" class="modal">
+        <div class="modal-content" style="width: 400px;">
+            <h2 id="destination-title">Move to...</h2>
+            <div class="destination-breadcrumbs" id="dest-breadcrumbs"
+                style="margin-bottom: 10px; font-size: 14px; color: #5f6368;">
+                <!-- Breadcrumbs -->
+            </div>
+            <div class="destination-list" id="dest-list"
+                style="height: 200px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 4px; margin-bottom: 16px;">
+                <!-- Folders will be listed here -->
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn" onclick="closeModal('destination-modal')">Cancel</button>
+                <button class="modal-btn primary" id="destination-confirm-btn">Move Here</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Status Container -->
+    <div id="upload-status-container" class="upload-status-container" style="display: none;">
+        <div class="upload-header">
+            <span id="upload-header-text">Uploading 1 item</span>
+            <div class="upload-header-actions">
+                <button class="icon-btn small" onclick="toggleUploadContainer()"><i class="fa-solid fa-chevron-down"
+                        id="upload-toggle-icon"></i></button>
+                <button class="icon-btn small" onclick="closeUploadContainer()"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="upload-body" id="upload-list">
+            <!-- Upload items will be added here dynamically -->
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js', v=1) }}"></script>
+</body>
+
+</html>

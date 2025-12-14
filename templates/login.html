@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Flask Drive</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+
+<body class="login-body">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <i class="fa-brands fa-telegram" style="font-size: 3rem; color: #24A1DE;"></i>
+                <h1>Login to Drive</h1>
+                <p>Securely access your files via Telegram</p>
+            </div>
+
+            <div id="step-phone" class="login-step">
+                <div class="input-group">
+                    <label>Phone Number</label>
+                    <input type="text" id="phone-input" placeholder="+1234567890" autofocus>
+                    <small>Include country code (e.g., +1)</small>
+                </div>
+                <button onclick="sendCode()" class="primary-btn">Send Code</button>
+            </div>
+
+            <div id="step-code" class="login-step" style="display: none;">
+                <div class="input-group">
+                    <label>Verification Code</label>
+                    <input type="text" id="code-input" placeholder="12345">
+                    <small>Check your Telegram app</small>
+                </div>
+                <button onclick="verifyCode()" class="primary-btn">Verify</button>
+            </div>
+
+            <div id="step-password" class="login-step" style="display: none;">
+                <div class="input-group">
+                    <label>Two-Step Verification</label>
+                    <input type="password" id="password-input" placeholder="Password">
+                </div>
+                <button onclick="verifyPassword()" class="primary-btn">Login</button>
+            </div>
+
+            <div id="login-error" class="error-msg"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+    <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+</body>
+
+</html>
