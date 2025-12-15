@@ -130,6 +130,10 @@ def verify():
         session['user_id'] = user.id
         session.pop('pending_phone', None)
 
+        # Force remove any existing manager for this user to ensure we get a FRESH one next time
+        # This fixes the "login loop" if the old manager had a bad session
+        remove_manager(user.id)
+
         return jsonify({'status': 'authenticated'})
 
     elif error == 'PASSWORD_REQUIRED':
