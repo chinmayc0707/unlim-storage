@@ -1,8 +1,10 @@
 import os
 import asyncio
+import random
 from telethon import TelegramClient, errors
+from telethon.tl.functions.upload import SaveBigFilePartRequest
+from telethon.tl.types import DocumentAttributeFilename, InputFileBig, InputFile
 from config import Config
-from telethon.tl.types import DocumentAttributeFilename
 from telethon.sessions import StringSession
 import math
 import shutil
@@ -128,6 +130,51 @@ class TelegramManager:
         if not self.is_connected:
             raise Exception("Not authenticated")
 
+    async def fast_upload(self, file_path, chunk_size=512 * 1024):
+        file_size = os.path.getsize(file_path)
+        file_name = os.path.basename(file_path)
+
+        # Use built-in upload for small files (< 10MB)
+        if file_size <= 10 * 1024 * 1024:
+             return await self.client.upload_file(file_path)
+
+        file_id = random.randint(1, 2**63 - 1)
+        part_count = (file_size + chunk_size - 1) // chunk_size
+
+        # 4 concurrent workers
+        sem = asyncio.Semaphore(4)
+
+        async def upload_part(part_index):
+            async with sem:
+                offset = part_index * chunk_size
+                with open(file_path, 'rb') as f:
+                    f.seek(offset)
+                    data = f.read(chunk_size)
+
+                if not data:
+                    return
+
+                # Retry logic
+                for attempt in range(3):
+                    try:
+                         await self.client(SaveBigFilePartRequest(
+                             file_id, part_index, part_count, data
+                         ))
+                         return
+                    except Exception as e:
+                        if attempt == 2:
+                            raise e
+                        await asyncio.sleep(1)
+
+        tasks = [upload_part(i) for i in range(part_count)]
+        await asyncio.gather(*tasks)
+
+        return InputFileBig(
+            id=file_id,
+            parts=part_count,
+            name=file_name
+        )
+
     def upload_file(self, file_path, codeword, file_name=None):
         self.ensure_connected()
         file_size = os.path.getsize(file_path)
@@ -139,10 +186,11 @@ class TelegramManager:
 
         
         if file_size <= CHUNK_SIZE:
+            input_file = self._run_with_retry(self.fast_upload, file_path)
             msg = self._run_with_retry(
                 self.client.send_file,
                 "me",
-                file_path,
+                file=input_file,
                 caption=f"Codeword: {codeword} | Part: 1/1",
                 attributes=attributes,
                 force_document=True
@@ -162,10 +210,11 @@ class TelegramManager:
                         if file_name:
                              part_attributes.append(DocumentAttributeFilename(file_name=f"{file_name}.part{part_num}"))
 
+                        input_file = self._run_with_retry(self.fast_upload, temp_chunk_path)
                         msg = self._run_with_retry(
                             self.client.send_file,
                             "me",
-                            temp_chunk_path,
+                            file=input_file,
                             caption=f"Codeword: {codeword} | Part: {part_num}/{total_parts}",
                             attributes=part_attributes,
                             force_document=True
