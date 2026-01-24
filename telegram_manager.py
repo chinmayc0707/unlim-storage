@@ -136,7 +136,7 @@ class TelegramManager:
 
         # Use built-in upload for small files (< 10MB)
         if file_size <= 10 * 1024 * 1024:
-             return await self.client.upload_file(file_path)
+            return await self.client.upload_file(file_path)
 
         file_id = random.randint(1, 2**63 - 1)
         part_count = (file_size + chunk_size - 1) // chunk_size
@@ -147,9 +147,13 @@ class TelegramManager:
         async def upload_part(part_index):
             async with sem:
                 offset = part_index * chunk_size
-                with open(file_path, 'rb') as f:
-                    f.seek(offset)
-                    data = f.read(chunk_size)
+
+                def read_chunk():
+                    with open(file_path, 'rb') as f:
+                        f.seek(offset)
+                        return f.read(chunk_size)
+
+                data = await self.loop.run_in_executor(None, read_chunk)
 
                 if not data:
                     return
@@ -157,10 +161,10 @@ class TelegramManager:
                 # Retry logic
                 for attempt in range(3):
                     try:
-                         await self.client(SaveBigFilePartRequest(
-                             file_id, part_index, part_count, data
-                         ))
-                         return
+                        await self.client(SaveBigFilePartRequest(
+                            file_id, part_index, part_count, data
+                        ))
+                        return
                     except Exception as e:
                         if attempt == 2:
                             raise e
