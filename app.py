@@ -185,9 +185,7 @@ def get_storage_usage():
         return jsonify({'error': 'Not authenticated'}), 401
         
     # Calculate sum of all file sizes for the user
-    # Note: We are doing this in Python for simplicity, but could be done with db.func.sum
-    files = File.query.filter_by(user_id=user_id).all()
-    total_bytes = sum(f.size for f in files)
+    total_bytes = db.session.query(db.func.sum(File.size)).filter(File.user_id == user_id).scalar() or 0
     
     return jsonify({'used': total_bytes})
 
