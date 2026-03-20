@@ -14,6 +14,8 @@ def generate_codeword(length=10):
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     phone = db.Column(db.String(20), unique=True, nullable=False)
+    password_hash = db.Column(db.String(255), nullable=True) # Adding password hash
+    jwt_token = db.Column(db.String(512), nullable=True) # Adding jwt token
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     session_string = db.Column(db.Text, nullable=True)
 

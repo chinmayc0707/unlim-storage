@@ -1,3 +1,19 @@
+
+const originalFetch = window.fetch;
+window.fetch = async function() {
+    let [resource, config] = arguments;
+    if (!config) {
+        config = {};
+    }
+    if (!config.headers) {
+        config.headers = {};
+    }
+    const token = localStorage.getItem('jwt_token');
+    if (token) {
+        config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return originalFetch(resource, config);
+};
 let currentFolderId = null;
 let folderPath = [{ id: null, name: 'My Drive' }];
 let contextMenuItem = null;
@@ -416,6 +432,8 @@ function uploadFile(file) {
     });
 
     xhr.open('POST', '/api/upload');
+    const token = localStorage.getItem('jwt_token');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
     xhr.send(formData);
 }
 
@@ -460,7 +478,7 @@ function hideContextMenu() {
 function downloadItem() {
     if (!contextMenuItem || contextMenuItem.type === 'folder') return;
 
-    window.location.href = `/api/download/${contextMenuItem.id}`;
+    window.location.href = `/api/download/${contextMenuItem.id}?token=${localStorage.getItem('jwt_token')}`;
     hideContextMenu();
 }
 

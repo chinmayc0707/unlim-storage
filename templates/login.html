@@ -15,33 +15,37 @@
             <div class="login-header">
                 <i class="fa-brands fa-telegram" style="font-size: 3rem; color: #24A1DE;"></i>
                 <h1>Login to Drive</h1>
-                <p>Securely access your files via Telegram</p>
+                <p>Securely access your files</p>
             </div>
 
-            <div id="step-phone" class="login-step">
+            <div id="step-login" class="login-step">
                 <div class="input-group">
                     <label>Phone Number</label>
                     <input type="text" id="phone-input" placeholder="+1234567890" autofocus>
-                    <small>Include country code (e.g., +1)</small>
                 </div>
-                <button onclick="sendCode()" class="primary-btn">Send Code</button>
-            </div>
-
-            <div id="step-code" class="login-step" style="display: none;">
                 <div class="input-group">
-                    <label>Verification Code</label>
-                    <input type="text" id="code-input" placeholder="12345">
-                    <small>Check your Telegram app</small>
-                </div>
-                <button onclick="verifyCode()" class="primary-btn">Verify</button>
-            </div>
-
-            <div id="step-password" class="login-step" style="display: none;">
-                <div class="input-group">
-                    <label>Two-Step Verification</label>
+                    <label>Password</label>
                     <input type="password" id="password-input" placeholder="Password">
                 </div>
-                <button onclick="verifyPassword()" class="primary-btn">Login</button>
+                <button onclick="loginUser()" class="primary-btn">Login</button>
+                <div style="margin-top: 15px; text-align: center;">
+                    <a href="#" onclick="showRegister()" style="color: #1a73e8; text-decoration: none;">Create Account</a>
+                </div>
+            </div>
+
+            <div id="step-register" class="login-step" style="display: none;">
+                <div class="input-group">
+                    <label>Phone Number</label>
+                    <input type="text" id="reg-phone-input" placeholder="+1234567890">
+                </div>
+                <div class="input-group">
+                    <label>Password</label>
+                    <input type="password" id="reg-password-input" placeholder="Password">
+                </div>
+                <button onclick="registerUser()" class="primary-btn">Register</button>
+                <div style="margin-top: 15px; text-align: center;">
+                    <a href="#" onclick="showLogin()" style="color: #1a73e8; text-decoration: none;">Back to Login</a>
+                </div>
             </div>
 
             <div id="login-error" class="error-msg"></div>
