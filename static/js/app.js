@@ -141,9 +141,13 @@ async function createFolder() {
 
 // --- File Functions ---
 
+let fetchFilesCounter = 0;
+
 async function fetchFiles(folderId = currentFolderId) {
     const isNavigation = folderId !== currentFolderId;
     currentFolderId = folderId;
+
+    const currentFetchId = ++fetchFilesCounter;
     updateBreadcrumbs();
 
     // Clear selection on navigation
@@ -165,6 +169,10 @@ async function fetchFiles(folderId = currentFolderId) {
         }
 
         const files = await response.json();
+
+        // Ignore if a newer fetch was started
+        if (currentFetchId !== fetchFilesCounter) return;
+
         window.lastFiles = files; // Store for view toggling
         renderFiles(files);
     } catch (error) {
@@ -399,7 +407,13 @@ function uploadFile(file, targetParentId = undefined) {
             sizeText.textContent = 'Upload complete';
             speedText.textContent = '';
             speedText.textContent = '';
-            fetchFiles(); // Refresh file list
+
+            // Only refresh the file list if the upload happened in the current viewed folder
+            const isTargetCurrentFolder = (targetParentId === undefined) || (targetParentId === currentFolderId) || (!targetParentId && !currentFolderId);
+            if (isTargetCurrentFolder) {
+                fetchFiles();
+            }
+
             fetchStorageUsage(); // Update storage
         } else if (xhr.status === 401) {
             window.location.href = '/login';

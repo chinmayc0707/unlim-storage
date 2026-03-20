@@ -172,8 +172,8 @@ def list_files():
     if parent_id == 'null' or parent_id == '':
         parent_id = None
 
-    folders = Folder.query.filter_by(parent_id=parent_id, user_id=user_id).all()
-    files = File.query.filter_by(parent_id=parent_id, user_id=user_id).all()
+    folders = Folder.query.filter_by(parent_id=parent_id, user_id=user_id).order_by(Folder.name.asc()).all()
+    files = File.query.filter_by(parent_id=parent_id, user_id=user_id).order_by(File.name.asc()).all()
 
     result = [f.to_dict() for f in folders] + [f.to_dict() for f in files]
     return jsonify(result)
