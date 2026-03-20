@@ -16,15 +16,11 @@ db.init_app(app)
 # Trigger new commit for GitHub sync
 
 
-from sqlalchemy.exc import OperationalError
 
 with app.app_context():
     # Drop everything to handle schema changes for this task
     # In production, use migrations
-    try:
-        db.create_all()
-    except OperationalError as e:
-        print(f"Skipping db.create_all() due to: {e}")
+    db.create_all()
 
 # Helper to get current user ID
 def get_current_user_id():
