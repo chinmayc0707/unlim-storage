@@ -36,8 +36,8 @@ When you upload a file, the backend splits it into chunks (if it exceeds Telegra
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
-    cd <repository-directory>
+    git clone https://github.com/chinmayc0707/unlim-storage.git
+    cd unlim-storage
     ```
 
 2.  **Install dependencies:**
