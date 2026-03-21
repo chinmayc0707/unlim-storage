@@ -711,3 +711,19 @@ body {
 .upload-status-icon.error {
     color: #d93025;
 }
+
+/* Indeterminate progress bar */
+.upload-progress-bar.indeterminate {
+    width: 30%;
+    animation: indeterminate-progress 1.5s infinite linear;
+    transform-origin: 0% 50%;
+}
+
+@keyframes indeterminate-progress {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(333%); /* 100 / 30 * 100 to push the 30% width bar completely out */
+    }
+}
