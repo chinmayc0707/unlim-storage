@@ -19,6 +19,7 @@ function setupEventListeners() {
     document.getElementById('file-input').addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             uploadFile(e.target.files[0]);
+            e.target.value = '';
         }
     });
 
@@ -26,6 +27,7 @@ function setupEventListeners() {
     document.getElementById('folder-input').addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             handleFolderUpload(e.target.files);
+            e.target.value = '';
         }
     });
 
