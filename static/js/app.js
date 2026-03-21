@@ -22,6 +22,13 @@ function setupEventListeners() {
         }
     });
 
+    // Folder Input
+    document.getElementById('folder-input').addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+            handleFolderUpload(e.target.files);
+        }
+    });
+
     // Close menus on click outside
     document.addEventListener('click', (e) => {
         hideContextMenu();
@@ -131,10 +138,16 @@ async function createFolder() {
     }
 }
 
+
 // --- File Functions ---
+
+let fetchFilesCounter = 0;
+
 async function fetchFiles(folderId = currentFolderId) {
     const isNavigation = folderId !== currentFolderId;
     currentFolderId = folderId;
+
+    const currentFetchId = ++fetchFilesCounter;
     updateBreadcrumbs();
 
     // Clear selection on navigation
@@ -156,6 +169,10 @@ async function fetchFiles(folderId = currentFolderId) {
         }
 
         const files = await response.json();
+
+        // Ignore if a newer fetch was started
+        if (currentFetchId !== fetchFilesCounter) return;
+
         window.lastFiles = files; // Store for view toggling
         renderFiles(files);
     } catch (error) {
@@ -344,7 +361,7 @@ function formatSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function uploadFile(file) {
+function uploadFile(file, targetParentId = undefined) {
     const uiItem = createUploadItemUI(file);
     const progressBar = uiItem.querySelector('.upload-progress-bar');
     const sizeText = uiItem.querySelector('.upload-size');
@@ -353,7 +370,7 @@ function uploadFile(file) {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('parent_id', currentFolderId || '');
+    formData.append('parent_id', targetParentId !== undefined ? (targetParentId || '') : (currentFolderId || ''));
 
     const xhr = new XMLHttpRequest();
     let startTime = Date.now();
@@ -390,7 +407,13 @@ function uploadFile(file) {
             sizeText.textContent = 'Upload complete';
             speedText.textContent = '';
             speedText.textContent = '';
-            fetchFiles(); // Refresh file list
+
+            // Only refresh the file list if the upload happened in the current viewed folder
+            const isTargetCurrentFolder = (targetParentId === undefined) || (targetParentId === currentFolderId) || (!targetParentId && !currentFolderId);
+            if (isTargetCurrentFolder) {
+                fetchFiles();
+            }
+
             fetchStorageUsage(); // Update storage
         } else if (xhr.status === 401) {
             window.location.href = '/login';
@@ -813,3 +836,72 @@ async function fetchStorageUsage() {
 
 // Expose
 window.fetchStorageUsage = fetchStorageUsage;
+
+async function handleFolderUpload(files) {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    // Track paths to create folders
+    const paths = new Set();
+
+    fileArray.forEach(file => {
+        if (file.webkitRelativePath) {
+            const parts = file.webkitRelativePath.split('/');
+            parts.pop(); // Remove filename
+            const dirPath = parts.join('/');
+
+            if (dirPath) {
+                let currentPath = '';
+                parts.forEach(part => {
+                    currentPath = currentPath ? `${currentPath}/${part}` : part;
+                    paths.add(currentPath);
+                });
+            }
+        }
+    });
+
+    const sortedPaths = Array.from(paths).sort((a, b) => a.split('/').length - b.split('/').length);
+    const folderIdMap = { '': currentFolderId };
+
+    for (const path of sortedPaths) {
+        const parts = path.split('/');
+        const folderName = parts[parts.length - 1];
+
+        let parentPath = '';
+        if (parts.length > 1) {
+            parentPath = parts.slice(0, parts.length - 1).join('/');
+        }
+
+        const parentId = folderIdMap[parentPath];
+
+        try {
+            const response = await fetch('/api/folders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: folderName, parent_id: parentId || null })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                folderIdMap[path] = data.id;
+            }
+        } catch (error) {
+            console.error('Error creating folder for upload:', error);
+        }
+    }
+
+    fetchFiles(); // Refresh UI after folders are created
+
+    // Upload files to their respective mapped folders
+    fileArray.forEach(file => {
+        let dirPath = '';
+        if (file.webkitRelativePath) {
+            const parts = file.webkitRelativePath.split('/');
+            parts.pop();
+            dirPath = parts.join('/');
+        }
+
+        const targetParentId = folderIdMap[dirPath];
+        uploadFile(file, targetParentId);
+    });
+}

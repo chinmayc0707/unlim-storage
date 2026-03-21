@@ -32,25 +32,10 @@
             </div>
 
             <div class="search-section">
-                <div class="search-bar">
-                    <button class="search-icon-btn"><i class="fa-solid fa-magnifying-glass"></i></button>
-                    <input type="text" placeholder="Search in Files">
-                    <button class="filter-icon-btn"><i class="fa-solid fa-sliders"></i></button>
-                </div>
+                
             </div>
 
-            <div class="header-actions">
-                <button class="icon-btn" title="Offline Support"><i class="fa-regular fa-circle-check"></i></button>
-                <button class="icon-btn" title="Support"><i class="fa-regular fa-circle-question"></i></button>
-
-                <button class="icon-btn" title="Settings"><i class="fa-solid fa-gear"></i></button>
-                <div class="apps-btn">
-                    <button class="icon-btn" title="Google Apps"><i class="fa-solid fa-grip"></i></button>
-                </div>
-                <div class="user-profile">
-                    <div class="avatar">U</div>
-                </div>
-            </div>
+            
         </header>
 
         <div class="main-body">
@@ -64,6 +49,9 @@
                     <div id="new-menu" class="new-menu">
                         <div class="item" onclick="document.getElementById('file-input').click()">
                             <i class="fa-solid fa-file-arrow-up"></i> File upload
+                        </div>
+                        <div class="item" onclick="document.getElementById('folder-input').click()">
+                            <i class="fa-solid fa-folder-arrow-up"></i> Folder upload
                         </div>
                         <div class="item" onclick="showCreateFolderModal()">
                             <i class="fa-solid fa-folder-plus"></i> New folder
@@ -94,9 +82,7 @@
                         <button class="icon-btn" id="view-toggle-btn" onclick="toggleView()" title="List view">
                             <i class="fa-solid fa-list"></i>
                         </button>
-                        <button class="icon-btn" title="View details">
-                            <i class="fa-solid fa-circle-info"></i>
-                        </button>
+                        
                     </div>
                 </div>
 
@@ -124,6 +110,7 @@
 
     <!-- Hidden File Input -->
     <input type="file" id="file-input" style="display: none;">
+    <input type="file" id="folder-input" webkitdirectory directory style="display: none;">
 
     <!-- Context Menu -->
     <div id="context-menu" class="context-menu">

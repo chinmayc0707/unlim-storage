@@ -1,5 +1,7 @@
 import os
 import asyncio
+import threading
+import inspect
 import random
 from telethon import TelegramClient, errors
 from telethon.tl.functions.upload import SaveBigFilePartRequest
@@ -16,6 +18,7 @@ CHUNK_SIZE = 2000 * 1024 * 1024
 
 class TelegramManager:
     def __init__(self, session_name=None, session_string=None):
+        self._lock = threading.Lock()
         self.session_name = session_name
         self.loop = asyncio.new_event_loop()
         # Set the event loop for the current thread
@@ -59,12 +62,15 @@ class TelegramManager:
         # 1. Ensure connected initially (best effort)
         try:
              if not self.client.is_connected():
-                 self.loop.run_until_complete(self.client.connect())
+                 with self._lock:
+                     self.loop.run_until_complete(self.client.connect())
         except Exception:
              pass # Will be caught by main try/except or retry logic
 
         try:
-            return self.loop.run_until_complete(callback(*args, **kwargs))
+            with self._lock:
+                coro = callback(*args, **kwargs)
+                return self.loop.run_until_complete(coro)
         except Exception as e:
             error_str = str(e).lower()
             # Catch "disconnected", "cannot send requests", or ConnectionError
@@ -77,13 +83,15 @@ class TelegramManager:
                 
                 # Reconnect
                 try:
-                    self.loop.run_until_complete(self.client.connect())
+                    with self._lock:
+                        self.loop.run_until_complete(self.client.connect())
                 except Exception as connect_err:
                      print(f"TelegramManager: Reconnect failed: {connect_err}")
                      raise connect_err
                 
                 # Retry
-                return self.loop.run_until_complete(callback(*args, **kwargs))
+                with self._lock:
+                    return self.loop.run_until_complete(callback(*args, **kwargs))
             else:
                 raise e
 
@@ -91,9 +99,11 @@ class TelegramManager:
         # Managed by _run_with_retry usually, but for explicit connect check:
         self._ensure_loop()
         if not self.client.is_connected():
-            self.loop.run_until_complete(self.client.connect())
+            with self._lock:
+                self.loop.run_until_complete(self.client.connect())
 
-        self.is_connected = self.loop.run_until_complete(self.client.is_user_authorized())
+        with self._lock:
+            self.is_connected = self.loop.run_until_complete(self.client.is_user_authorized())
         return self.is_connected
 
     def send_code(self, phone):
@@ -282,14 +292,20 @@ class TelegramManager:
                 self.phone_code_hash = None
                 # Clean disconnect
                 if self.client:
-                    self.loop.run_until_complete(self.client.disconnect())
+                    with self._lock:
+                        dis = self.client.disconnect()
+                        if inspect.isawaitable(dis):
+                            self.loop.run_until_complete(dis)
 
     def close(self):
         """Safely disconnect the client."""
         self._ensure_loop()
         try:
             if self.client and self.client.is_connected():
-                self.loop.run_until_complete(self.client.disconnect())
+                with self._lock:
+                    dis = self.client.disconnect()
+                    if inspect.isawaitable(dis):
+                        self.loop.run_until_complete(dis)
         except Exception as e:
             # Ignore if already disconnected or other trivial errors during cleanup
             print(f"Error closing manager: {e}")
@@ -302,6 +318,7 @@ class TelegramManager:
 # Global registry for active managers
 # Key: user_id (str or int) or phone (str) for pending logins
 _active_managers = {}
+_registry_lock = threading.Lock()
 
 def get_manager(key, session_string=None):
     """
@@ -309,16 +326,18 @@ def get_manager(key, session_string=None):
     session_string: Optional existing session string to load.
     """
     key = str(key)
-    if key not in _active_managers:
-        _active_managers[key] = TelegramManager(session_name=key, session_string=session_string)
-    return _active_managers[key]
+    with _registry_lock:
+        if key not in _active_managers:
+            _active_managers[key] = TelegramManager(session_name=key, session_string=session_string)
+        return _active_managers[key]
 
 def remove_manager(key):
     key = str(key)
-    if key in _active_managers:
-        manager = _active_managers[key]
-        try:
-            manager.close()
-        except:
-            pass
-        del _active_managers[key]
+    with _registry_lock:
+        if key in _active_managers:
+            manager = _active_managers[key]
+            try:
+                manager.close()
+            except:
+                pass
+            del _active_managers[key]
