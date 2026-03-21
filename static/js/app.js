@@ -19,6 +19,7 @@ function setupEventListeners() {
     document.getElementById('file-input').addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             uploadFile(e.target.files[0]);
+            e.target.value = '';
         }
     });
 
@@ -26,6 +27,7 @@ function setupEventListeners() {
     document.getElementById('folder-input').addEventListener('change', (e) => {
         if (e.target.files.length > 0) {
             handleFolderUpload(e.target.files);
+            e.target.value = '';
         }
     });
 
@@ -312,6 +314,43 @@ function closeUploadContainer() {
     document.getElementById('upload-list').innerHTML = ''; // Clear completed
 }
 
+
+function createActionItemUI(actionName, itemName) {
+    const container = document.getElementById('upload-status-container');
+    const list = document.getElementById('upload-list');
+
+    if (container.style.display === 'none') {
+        container.style.display = 'flex';
+        uploadMinimized = false;
+        document.getElementById('upload-list').style.display = 'block';
+        document.getElementById('upload-toggle-icon').className = 'fa-solid fa-chevron-down';
+    }
+
+    const item = document.createElement('div');
+    item.className = 'upload-item';
+    item.id = `action-${Date.now()}`;
+
+    const totalItems = list.children.length + 1;
+    document.getElementById('upload-header-text').textContent = `${totalItems} item${totalItems !== 1 ? 's' : ''} in progress`;
+
+    item.innerHTML = `
+        <div class="upload-item-header">
+            <div class="upload-filename" title="${actionName}: ${itemName}">${actionName}: ${itemName}</div>
+            <div class="upload-status-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+        </div>
+        <div class="upload-progress-bar-container">
+            <div class="upload-progress-bar indeterminate"></div>
+        </div>
+        <div class="upload-details">
+            <span class="upload-size">Processing...</span>
+            <span class="upload-speed"></span>
+        </div>
+    `;
+
+    list.prepend(item);
+    return item;
+}
+
 function createUploadItemUI(file) {
     const container = document.getElementById('upload-status-container');
     const list = document.getElementById('upload-list');
@@ -517,20 +556,48 @@ async function deleteItem() {
 
     if (!confirm(confirmMsg)) return;
 
+    const uiItem = createActionItemUI('Deleting', count > 1 ? `${count} items` : contextMenuItem.name);
+
     try {
-        await fetch('/api/delete', {
+        const response = await fetch('/api/delete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 items: itemsToDelete
             })
         });
-        fetchFiles();
-        fetchStorageUsage(); // Update storage
-        selectedItems.clear(); // Clear selection after delete
-        updateSelectionUI();
+
+        const progressBar = uiItem.querySelector('.upload-progress-bar');
+        const statusIcon = uiItem.querySelector('.upload-status-icon');
+        const sizeText = uiItem.querySelector('.upload-size');
+
+        progressBar.classList.remove('indeterminate');
+
+        if (response.ok) {
+            progressBar.style.width = '100%';
+            progressBar.style.backgroundColor = '#1e8e3e';
+            statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
+            sizeText.textContent = 'Completed';
+
+            fetchFiles();
+            fetchStorageUsage(); // Update storage
+            selectedItems.clear(); // Clear selection after delete
+            updateSelectionUI();
+        } else {
+            progressBar.style.backgroundColor = '#d93025';
+            statusIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation error"></i>';
+            sizeText.textContent = 'Failed';
+        }
     } catch (error) {
         console.error('Delete error:', error);
+        const progressBar = uiItem.querySelector('.upload-progress-bar');
+        const statusIcon = uiItem.querySelector('.upload-status-icon');
+        const sizeText = uiItem.querySelector('.upload-size');
+
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.backgroundColor = '#d93025';
+        statusIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation error"></i>';
+        sizeText.textContent = 'Failed';
     }
     hideContextMenu();
 }
@@ -744,6 +811,11 @@ async function confirmMove() {
     const currentDest = destinationPath[destinationPath.length - 1];
     const newParentId = currentDest.id;
 
+    closeModal('destination-modal');
+
+    const count = actionItems.length;
+    const uiItem = createActionItemUI('Moving', count > 1 ? `${count} items` : actionItems[0].name);
+
     try {
         const response = await fetch('/api/move', {
             method: 'POST',
@@ -754,17 +826,38 @@ async function confirmMove() {
             })
         });
 
+        const progressBar = uiItem.querySelector('.upload-progress-bar');
+        const statusIcon = uiItem.querySelector('.upload-status-icon');
+        const sizeText = uiItem.querySelector('.upload-size');
+
+        progressBar.classList.remove('indeterminate');
+
         if (response.ok) {
-            closeModal('destination-modal');
+            progressBar.style.width = '100%';
+            progressBar.style.backgroundColor = '#1e8e3e';
+            statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
+            sizeText.textContent = 'Completed';
+
             fetchFiles(); // Refresh current view
             selectedItems.clear();
             updateSelectionUI();
         } else {
             const data = await response.json();
+            progressBar.style.backgroundColor = '#d93025';
+            statusIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation error"></i>';
+            sizeText.textContent = 'Failed';
             alert(data.error || 'Move failed');
         }
     } catch (error) {
         console.error('Move error:', error);
+        const progressBar = uiItem.querySelector('.upload-progress-bar');
+        const statusIcon = uiItem.querySelector('.upload-status-icon');
+        const sizeText = uiItem.querySelector('.upload-size');
+
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.backgroundColor = '#d93025';
+        statusIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation error"></i>';
+        sizeText.textContent = 'Failed';
         alert('Move error');
     }
 }
@@ -773,11 +866,10 @@ async function confirmCopy() {
     const currentDest = destinationPath[destinationPath.length - 1];
     const newParentId = currentDest.id;
 
-    // Show loading state on button
-    const btn = document.getElementById('destination-confirm-btn');
-    const originalText = btn.textContent;
-    btn.textContent = 'Copying...';
-    btn.disabled = true;
+    closeModal('destination-modal');
+
+    const count = actionItems.length;
+    const uiItem = createActionItemUI('Copying', count > 1 ? `${count} items` : actionItems[0].name);
 
     try {
         const response = await fetch('/api/copy', {
@@ -789,21 +881,39 @@ async function confirmCopy() {
             })
         });
 
+        const progressBar = uiItem.querySelector('.upload-progress-bar');
+        const statusIcon = uiItem.querySelector('.upload-status-icon');
+        const sizeText = uiItem.querySelector('.upload-size');
+
+        progressBar.classList.remove('indeterminate');
+
         if (response.ok) {
-            closeModal('destination-modal');
+            progressBar.style.width = '100%';
+            progressBar.style.backgroundColor = '#1e8e3e';
+            statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
+            sizeText.textContent = 'Completed';
+
             fetchFiles(); // Refresh current view
             selectedItems.clear();
             updateSelectionUI();
         } else {
             const data = await response.json();
+            progressBar.style.backgroundColor = '#d93025';
+            statusIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation error"></i>';
+            sizeText.textContent = 'Failed';
             alert(data.error || 'Copy failed');
         }
     } catch (error) {
         console.error('Copy error:', error);
+        const progressBar = uiItem.querySelector('.upload-progress-bar');
+        const statusIcon = uiItem.querySelector('.upload-status-icon');
+        const sizeText = uiItem.querySelector('.upload-size');
+
+        progressBar.classList.remove('indeterminate');
+        progressBar.style.backgroundColor = '#d93025';
+        statusIcon.innerHTML = '<i class="fa-solid fa-circle-exclamation error"></i>';
+        sizeText.textContent = 'Failed';
         alert('Copy error');
-    } finally {
-        btn.textContent = originalText;
-        btn.disabled = false;
     }
 }
 
