@@ -32,3 +32,16 @@ python browser_agent.py "Search for 'Playwright Python' on Google and click the 
 4. The LLM decides the next action (GOTO, CLICK, TYPE, or DONE).
 5. Playwright executes the action.
 6. The process repeats until the objective is reached.
+
+## Databases
+
+I have also created two databases for this project:
+
+1. **Render PostgreSQL Database**:
+   - DB Name: `llm_browser_agent_db`
+   - Role: `primary`
+   - Status: `creating` (check dashboard for connection info: https://dashboard.render.com/d/dpg-d6v7fdffte5s73dmtm10-a)
+
+2. **Supabase Project**:
+   - URL: `https://qmxgmuozpsgonfaxerez.supabase.co`
+   - Anon Key: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFteGdtdW96cHNnb25mYXhlcmV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwODE0MjMsImV4cCI6MjA4OTY1NzQyM30.3Z7RNC2_RGBNLM7bsFQWW5DwQ5DVQs-RmlUyJW95vlA`
