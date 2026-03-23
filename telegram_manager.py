@@ -303,9 +303,9 @@ class TelegramManager:
         self.ensure_connected()
         messages = []
         try:
-            # We fetch messages from "me" where they have a document and a caption starting with "Codeword:"
-            for msg in self._run_with_retry(self.client.get_messages, "me", limit=None, search="Codeword:"):
-                if msg.media and hasattr(msg.media, 'document'):
+            msgs = self._run_with_retry(self.client.get_messages, "me", limit=None)
+            for msg in msgs:
+                if msg.message and "Codeword:" in msg.message and msg.file:
                     messages.append(msg)
         except Exception as e:
             print(f"Error fetching all messages: {e}")

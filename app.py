@@ -108,18 +108,16 @@ def sync_files_from_telegram(user_id, manager):
 
             file_map[codeword]['parts'].append({'id': msg.id, 'num': part_num})
 
-            if hasattr(msg.media.document, 'size'):
-                file_map[codeword]['size'] += msg.media.document.size
-
-            file_map[codeword]['mime_type'] = msg.media.document.mime_type
-
-            if not name_match:
-                for attr in msg.media.document.attributes:
-                    if hasattr(attr, 'file_name'):
-                        extracted_name = attr.file_name
-                        if extracted_name.endswith(f'.part{part_num}'):
-                            extracted_name = extracted_name[:-len(f'.part{part_num}')]
-                        file_map[codeword]['name'] = extracted_name
+            if msg.file:
+                if msg.file.size:
+                    file_map[codeword]['size'] += msg.file.size
+                if msg.file.mime_type:
+                    file_map[codeword]['mime_type'] = msg.file.mime_type
+                if not name_match and msg.file.name:
+                    extracted_name = msg.file.name
+                    if extracted_name.endswith(f'.part{part_num}'):
+                        extracted_name = extracted_name[:-len(f'.part{part_num}')]
+                    file_map[codeword]['name'] = extracted_name
 
     for codeword, data in file_map.items():
         existing_file = File.query.filter_by(id=codeword, user_id=user_id).first()
