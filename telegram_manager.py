@@ -185,7 +185,7 @@ class TelegramManager:
             name=file_name
         )
 
-    def upload_file(self, file_path, codeword, file_name=None):
+    def upload_file(self, file_path, codeword, file_name=None, directory_path=''):
         self.ensure_connected()
         file_size = os.path.getsize(file_path)
         message_ids = []
@@ -194,14 +194,16 @@ class TelegramManager:
         if file_name:
             attributes.append(DocumentAttributeFilename(file_name=file_name))
 
-        
+        caption_suffix = f" | Path: {directory_path}" if directory_path else " | Path: /"
+        caption_suffix += f" | Name: {file_name}" if file_name else ""
+
         if file_size <= CHUNK_SIZE:
             input_file = self._run_with_retry(self.fast_upload, file_path)
             msg = self._run_with_retry(
                 self.client.send_file,
                 "me",
                 file=input_file,
-                caption=f"Codeword: {codeword} | Part: 1/1",
+                caption=f"Codeword: {codeword} | Part: 1/1{caption_suffix}",
                 attributes=attributes,
                 force_document=True
             )
@@ -225,7 +227,7 @@ class TelegramManager:
                             self.client.send_file,
                             "me",
                             file=input_file,
-                            caption=f"Codeword: {codeword} | Part: {part_num}/{total_parts}",
+                            caption=f"Codeword: {codeword} | Part: {part_num}/{total_parts}{caption_suffix}",
                             attributes=part_attributes,
                             force_document=True
                         )
@@ -250,9 +252,12 @@ class TelegramManager:
         self.ensure_connected()
         self._run_with_retry(self.client.delete_messages, "me", message_ids)
 
-    def copy_file(self, message_ids, new_codeword):
+    def copy_file(self, message_ids, new_codeword, new_directory_path='', new_file_name=''):
         self.ensure_connected()
         new_message_ids = []
+
+        caption_suffix = f" | Path: {new_directory_path}" if new_directory_path else " | Path: /"
+        caption_suffix += f" | Name: {new_file_name}" if new_file_name else ""
 
         for i, msg_id in enumerate(message_ids):
             # Forward the message to "me" (Saved Messages)
@@ -269,8 +274,8 @@ class TelegramManager:
             total_parts = len(message_ids)
             part_num = i + 1
 
-            # Update caption with new codeword
-            new_caption = f"Codeword: {new_codeword} | Part: {part_num}/{total_parts}"
+            # Update caption with new codeword and path/name
+            new_caption = f"Codeword: {new_codeword} | Part: {part_num}/{total_parts}{caption_suffix}"
 
             # Edit the caption of the forwarded message
             self._run_with_retry(self.client.edit_message, new_msg, new_caption)
@@ -278,6 +283,33 @@ class TelegramManager:
             new_message_ids.append(new_msg.id)
 
         return new_message_ids
+
+    def update_file_caption(self, message_ids, codeword, directory_path='', file_name=''):
+        self.ensure_connected()
+
+        caption_suffix = f" | Path: {directory_path}" if directory_path else " | Path: /"
+        caption_suffix += f" | Name: {file_name}" if file_name else ""
+
+        total_parts = len(message_ids)
+        for i, msg_id in enumerate(message_ids):
+            part_num = i + 1
+            new_caption = f"Codeword: {codeword} | Part: {part_num}/{total_parts}{caption_suffix}"
+            try:
+                self._run_with_retry(self.client.edit_message, "me", msg_id, new_caption)
+            except Exception as e:
+                print(f"Error updating caption for message {msg_id}: {e}")
+
+    def get_all_file_messages(self):
+        self.ensure_connected()
+        messages = []
+        try:
+            # We fetch messages from "me" where they have a document and a caption starting with "Codeword:"
+            for msg in self._run_with_retry(self.client.get_messages, "me", limit=None, search="Codeword:"):
+                if msg.media and hasattr(msg.media, 'document'):
+                    messages.append(msg)
+        except Exception as e:
+            print(f"Error fetching all messages: {e}")
+        return messages
 
     def logout(self):
         # We don't always need retry for logout, but good to have

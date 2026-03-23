@@ -29,21 +29,121 @@ def get_current_user_id():
 def get_current_manager():
     user_id = get_current_user_id()
     if user_id:
-        # Fetch user to get session string
         user = User.query.get(user_id)
         if user and user.session_string:
              manager = get_manager(user_id, session_string=user.session_string)
         else:
-             # Fallback or error state?
-             # For now, if no session string, we can't connect, so just get a blank manager or None?
-             # But get_manager creates new one.
              manager = get_manager(user_id)
-        
-        # Ensure connected if we have a user_id (should be authorized)
-        # However, checking connection every time might be slow?
-        # Let's rely on manager state
         return manager
     return None
+
+def get_full_path(folder_id, user_id):
+    if not folder_id:
+        return ''
+
+    path_parts = []
+    current_folder = Folder.query.filter_by(id=folder_id, user_id=user_id).first()
+    while current_folder:
+        path_parts.insert(0, current_folder.name)
+        current_folder = Folder.query.filter_by(id=current_folder.parent_id, user_id=user_id).first()
+
+    return '/' + '/'.join(path_parts) if path_parts else ''
+
+def update_folder_captions_recursive(folder_id, user_id, manager):
+    # Update files in this folder
+    files = File.query.filter_by(parent_id=folder_id, user_id=user_id).all()
+    folder_path = get_full_path(folder_id, user_id)
+    for file in files:
+        manager.update_file_caption(file.message_ids, file.id, directory_path=folder_path, file_name=file.name)
+
+    # Recurse for subfolders
+    subfolders = Folder.query.filter_by(parent_id=folder_id, user_id=user_id).all()
+    for subfolder in subfolders:
+        update_folder_captions_recursive(subfolder.id, user_id, manager)
+
+def get_or_create_folder_by_path(path_str, user_id):
+    if not path_str or path_str == '/':
+        return None
+
+    parts = [p for p in path_str.split('/') if p]
+    current_parent_id = None
+
+    for part in parts:
+        folder = Folder.query.filter_by(name=part, parent_id=current_parent_id, user_id=user_id).first()
+        if not folder:
+            folder = Folder(name=part, parent_id=current_parent_id, user_id=user_id)
+            db.session.add(folder)
+            db.session.flush() # get folder.id
+        current_parent_id = folder.id
+
+    return current_parent_id
+
+def sync_files_from_telegram(user_id, manager):
+    import re
+    messages = manager.get_all_file_messages()
+
+    file_map = {}
+
+    for msg in messages:
+        caption = msg.message or ''
+        match = re.search(r'Codeword:\s*([a-zA-Z0-9\-]+)\s*\|\s*Part:\s*(\d+)/(\d+)', caption)
+        if match:
+            codeword = match.group(1)
+            part_num = int(match.group(2))
+
+            path_match = re.search(r'\|\s*Path:\s*(.*?)(?:\s*\|\s*Name:|$)', caption)
+            path = path_match.group(1).strip() if path_match else ''
+
+            name_match = re.search(r'\|\s*Name:\s*(.*)$', caption)
+            name = name_match.group(1).strip() if name_match else 'Unknown File'
+
+            if codeword not in file_map:
+                file_map[codeword] = {
+                    'parts': [],
+                    'path': path,
+                    'name': name,
+                    'size': 0,
+                    'mime_type': 'application/octet-stream'
+                }
+
+            file_map[codeword]['parts'].append({'id': msg.id, 'num': part_num})
+
+            if hasattr(msg.media.document, 'size'):
+                file_map[codeword]['size'] += msg.media.document.size
+
+            file_map[codeword]['mime_type'] = msg.media.document.mime_type
+
+            if not name_match:
+                for attr in msg.media.document.attributes:
+                    if hasattr(attr, 'file_name'):
+                        extracted_name = attr.file_name
+                        if extracted_name.endswith(f'.part{part_num}'):
+                            extracted_name = extracted_name[:-len(f'.part{part_num}')]
+                        file_map[codeword]['name'] = extracted_name
+
+    for codeword, data in file_map.items():
+        existing_file = File.query.filter_by(id=codeword, user_id=user_id).first()
+        if existing_file:
+            continue
+
+        parent_id = get_or_create_folder_by_path(data['path'], user_id)
+
+        data['parts'].sort(key=lambda x: x['num'])
+        message_ids = [p['id'] for p in data['parts']]
+
+        new_file = File(
+            id=codeword,
+            name=data['name'],
+            parent_id=parent_id,
+            user_id=user_id,
+            size=data['size'],
+            mime_type=data['mime_type']
+        )
+        new_file.message_ids = message_ids
+        db.session.add(new_file)
+
+    db.session.commit()
+
 
 @app.route('/')
 def index():
@@ -121,6 +221,16 @@ def verify():
         # Save session string
         user.session_string = manager.get_session_string()
         db.session.commit()
+
+        # Check if user has no files and no folders, then rebuild database
+        folder_count = Folder.query.filter_by(user_id=user.id).count()
+        file_count = File.query.filter_by(user_id=user.id).count()
+        if folder_count == 0 and file_count == 0:
+            try:
+                print(f"Syncing files from Telegram for user {user.id}")
+                sync_files_from_telegram(user.id, manager)
+            except Exception as e:
+                print(f"Error syncing files from Telegram: {e}")
 
         # No need to move files anymore.
         # Close pending manager
@@ -224,7 +334,8 @@ def upload_file():
         )
         db.session.add(new_file)
 
-        message_ids = manager.upload_file(temp_path, codeword, file_name=file.filename)
+        folder_path = get_full_path(parent_id, user_id)
+        message_ids = manager.upload_file(temp_path, codeword, file_name=file.filename, directory_path=folder_path)
         new_file.message_ids = message_ids
         db.session.commit()
 
@@ -341,6 +452,16 @@ def move_item():
                 item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
 
             item.parent_id = new_parent_id
+            db.session.flush()
+
+            try:
+                if item_type == 'folder':
+                    update_folder_captions_recursive(item.id, user_id, get_current_manager())
+                else:
+                    folder_path = get_full_path(item.parent_id, user_id)
+                    get_current_manager().update_file_caption(item.message_ids, item.id, directory_path=folder_path, file_name=item.name)
+            except Exception as e:
+                print(f"Failed to update caption for moved item: {e}")
 
         db.session.commit()
         return jsonify({'status': 'success'})
@@ -354,7 +475,8 @@ def copy_recursive(item, new_parent_id, user_id, manager):
 
         # Copy Telegram messages
         try:
-            new_message_ids = manager.copy_file(item.message_ids, new_codeword)
+            folder_path = get_full_path(new_parent_id, user_id)
+            new_message_ids = manager.copy_file(item.message_ids, new_codeword, new_directory_path=folder_path, new_file_name=item.name)
 
             new_file = File(
                 id=new_codeword,
@@ -450,6 +572,16 @@ def rename_item():
 
     item.name = new_name
     db.session.commit()
+
+    try:
+        if item_type == 'folder':
+            update_folder_captions_recursive(item.id, user_id, get_current_manager())
+        else:
+            folder_path = get_full_path(item.parent_id, user_id)
+            get_current_manager().update_file_caption(item.message_ids, item.id, directory_path=folder_path, file_name=new_name)
+    except Exception as e:
+        print(f"Failed to update caption for renamed item: {e}")
+
     return jsonify({'status': 'success'})
 
 def delete_folder_recursive(folder_id, user_id, manager):
