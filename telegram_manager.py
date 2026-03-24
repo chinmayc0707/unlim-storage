@@ -255,15 +255,10 @@ class TelegramManager:
         new_message_ids = []
 
         for i, msg_id in enumerate(message_ids):
-            # Forward the message to "me" (Saved Messages)
-            forwarded_msgs = self._run_with_retry(
-                self.client.forward_messages, "me", [msg_id], from_peer="me"
-            )
-
-            if not forwarded_msgs:
-                raise Exception(f"Failed to forward message {msg_id}")
-
-            new_msg = forwarded_msgs[0]
+            # Get the original message
+            orig_msg = self._run_with_retry(self.client.get_messages, "me", ids=msg_id)
+            if not orig_msg or not orig_msg.media:
+                raise Exception(f"Original message {msg_id} not found or has no media")
 
             # Calculate part info if multiple parts
             total_parts = len(message_ids)
@@ -272,8 +267,13 @@ class TelegramManager:
             # Update caption with new codeword
             new_caption = f"Codeword: {new_codeword} | Part: {part_num}/{total_parts}"
 
-            # Edit the caption of the forwarded message
-            self._run_with_retry(self.client.edit_message, new_msg, new_caption)
+            # Send a new message with the same media and the new caption
+            new_msg = self._run_with_retry(
+                self.client.send_message,
+                "me",
+                file=orig_msg.media,
+                message=new_caption
+            )
 
             new_message_ids.append(new_msg.id)
 
