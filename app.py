@@ -416,8 +416,15 @@ def copy_item():
             item_id = item_data.get('id')
             item_type = item_data.get('type')
 
-            # Prevent copying folder into itself or its children
             if item_type == 'folder':
+                item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+            else:
+                item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+
+            # Prevent copying folder into itself, its parent, or its children
+            if item_type == 'folder':
+                if item.parent_id == new_parent_id:
+                    return jsonify({'error': 'cant copy to own directory'}), 400
                 if item_id == new_parent_id:
                     return jsonify({'error': 'Cannot copy folder into itself'}), 400
 
@@ -428,11 +435,6 @@ def copy_item():
                     if current.id == item_id:
                         return jsonify({'error': 'Cannot copy folder into its own subfolder'}), 400
                     current = Folder.query.filter_by(id=current.parent_id, user_id=user_id).first() if current.parent_id else None
-
-            if item_type == 'folder':
-                item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
-            else:
-                item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
 
             copy_recursive(item, new_parent_id, user_id, manager)
 
