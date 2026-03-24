@@ -267,13 +267,37 @@ class TelegramManager:
             # Update caption with new codeword
             new_caption = f"Codeword: {new_codeword} | Part: {part_num}/{total_parts}"
 
-            # Send a new message with the same media and the new caption
-            new_msg = self._run_with_retry(
-                self.client.send_message,
-                "me",
-                file=orig_msg.media,
-                message=new_caption
-            )
+            # If we use client.send_file("me", file=orig_msg.media), Telethon might
+            # internally optimize this into a ForwardMessagesRequest because the source
+            # and destination peers are identical, which doesn't allow editing captions.
+            # To bypass this, we use the raw SendMediaRequest or extract the raw input
+            # document and pass it so telethon can't guess it's a forward.
+            from telethon.tl.types import InputDocument
+
+            if hasattr(orig_msg.media, 'document'):
+                doc = orig_msg.media.document
+                # create raw InputDocument so telethon treats it as an already-uploaded file
+                raw_file = InputDocument(
+                    id=doc.id,
+                    access_hash=doc.access_hash,
+                    file_reference=doc.file_reference
+                )
+
+                new_msg = self._run_with_retry(
+                    self.client.send_file,
+                    "me",
+                    file=raw_file,
+                    caption=new_caption,
+                    force_document=True
+                )
+            else:
+                # fallback if it's not a document
+                new_msg = self._run_with_retry(
+                    self.client.send_file,
+                    "me",
+                    file=orig_msg.media,
+                    caption=new_caption
+                )
 
             new_message_ids.append(new_msg.id)
 
