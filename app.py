@@ -322,23 +322,26 @@ def move_item():
             item_id = item_data.get('id')
             item_type = item_data.get('type')
 
+            if item_type == 'folder':
+                item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+            else:
+                item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+
+            if item.parent_id == new_parent_id:
+                return jsonify({'error': 'moving to same directory isnt possible'}), 400
+
             # Prevent moving folder into itself or its children
             if item_type == 'folder':
                 if item_id == new_parent_id:
-                    return jsonify({'error': 'Cannot move folder into itself'}), 400
+                    return jsonify({'error': 'moving to sub directories also is not possible'}), 400
 
                 # Check if new_parent_id is a child of item_id
                 # Only check folders belonging to user
                 current = Folder.query.filter_by(id=new_parent_id, user_id=user_id).first()
                 while current:
                     if current.id == item_id:
-                        return jsonify({'error': 'Cannot move folder into its own subfolder'}), 400
+                        return jsonify({'error': 'moving to sub directories also is not possible'}), 400
                     current = Folder.query.filter_by(id=current.parent_id, user_id=user_id).first() if current.parent_id else None
-
-            if item_type == 'folder':
-                item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
-            else:
-                item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
 
             item.parent_id = new_parent_id
 
