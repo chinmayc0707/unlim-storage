@@ -22,6 +22,17 @@ with app.app_context():
     db.create_all()
 
 # Helper to get current user ID
+
+# Helper to check if name already exists in the same directory
+def check_name_conflict(name, parent_id, user_id):
+    folder_exists = Folder.query.filter_by(name=name, parent_id=parent_id, user_id=user_id).first()
+    if folder_exists:
+        return True
+    file_exists = File.query.filter_by(name=name, parent_id=parent_id, user_id=user_id).first()
+    if file_exists:
+        return True
+    return False
+
 def get_current_user_id():
     return session.get('user_id')
 
@@ -208,6 +219,9 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
+    if check_name_conflict(file.filename, parent_id, user_id):
+        return jsonify({'error': 'A file or folder with this name already exists in this directory.'}), 400
+
     codeword = generate_codeword()
     temp_path = os.path.join(BASE_DIR, 'tmp', codeword)
     os.makedirs(os.path.join(BASE_DIR, 'tmp'), exist_ok=True)
@@ -290,6 +304,9 @@ def create_folder():
     if not name:
         return jsonify({'error': 'Name required'}), 400
 
+    if check_name_conflict(name, parent_id, user_id):
+        return jsonify({'error': 'A file or folder with this name already exists in this directory.'}), 400
+
     new_folder = Folder(name=name, parent_id=parent_id, user_id=user_id)
     db.session.add(new_folder)
     db.session.commit()
@@ -340,6 +357,10 @@ def move_item():
             else:
                 item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
 
+
+            if check_name_conflict(item.name, new_parent_id, user_id):
+                return jsonify({'error': f'A file or folder named {item.name} already exists in the destination directory.'}), 400
+
             item.parent_id = new_parent_id
 
         db.session.commit()
@@ -347,6 +368,7 @@ def move_item():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
 
 def copy_recursive(item, new_parent_id, user_id, manager):
     if isinstance(item, File):
@@ -421,6 +443,10 @@ def copy_item():
             else:
                 item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
 
+
+            if check_name_conflict(item.name, new_parent_id, user_id):
+                return jsonify({'error': f'A file or folder named {item.name} already exists in the destination directory.'}), 400
+
             copy_recursive(item, new_parent_id, user_id, manager)
 
         db.session.commit()
@@ -447,6 +473,10 @@ def rename_item():
         item = Folder.query.filter_by(id=item_id, user_id=user_id).first_or_404()
     else:
         item = File.query.filter_by(id=item_id, user_id=user_id).first_or_404()
+
+
+    if new_name != item.name and check_name_conflict(new_name, item.parent_id, user_id):
+        return jsonify({'error': 'A file or folder with this name already exists in this directory.'}), 400
 
     item.name = new_name
     db.session.commit()
