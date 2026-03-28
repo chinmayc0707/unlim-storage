@@ -58,6 +58,7 @@ async function verifyCode() {
 
         const data = await response.json();
         if (response.ok) {
+            localStorage.setItem('token', data.token);
             window.location.href = '/';
         } else if (response.status === 401 && data.status === 'password_required') {
             document.getElementById('step-code').style.display = 'none';
@@ -93,6 +94,7 @@ async function verifyPassword() {
 
         const data = await response.json();
         if (response.ok) {
+            localStorage.setItem('token', data.token);
             window.location.href = '/';
         } else {
             errorDiv.textContent = data.error || 'Invalid password';

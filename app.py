@@ -4,6 +4,9 @@ from models import db, File, Folder, User, generate_codeword
 from telegram_manager import get_manager, remove_manager
 import os
 import shutil
+from functools import wraps
+import jwt
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -21,8 +24,42 @@ with app.app_context():
     # In production, use migrations
     db.create_all()
 
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        # Check Authorization header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+
+        # Check query string (for downloads)
+        if not token and 'token' in request.args:
+            token = request.args.get('token')
+
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            user_id = data['user_id']
+            # Put user_id in request so routes can use it
+            request.user_id = user_id
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(*args, **kwargs)
+
+    return decorated
+
 # Helper to get current user ID
 def get_current_user_id():
+    if hasattr(request, 'user_id'):
+        return request.user_id
     return session.get('user_id')
 
 # Helper to get current manager
@@ -67,6 +104,7 @@ def login_page():
 
 # --- Auth Routes ---
 @app.route('/api/auth/status')
+@token_required
 def auth_status():
     user_id = get_current_user_id()
     if not user_id:
@@ -130,11 +168,14 @@ def verify():
         session['user_id'] = user.id
         session.pop('pending_phone', None)
 
+        # Generate JWT token
+        token = jwt.encode({'user_id': user.id}, app.config['SECRET_KEY'], algorithm='HS256')
+
         # Force remove any existing manager for this user to ensure we get a FRESH one next time
         # This fixes the "login loop" if the old manager had a bad session
         remove_manager(user.id)
 
-        return jsonify({'status': 'authenticated'})
+        return jsonify({'status': 'authenticated', 'token': token})
 
     elif error == 'PASSWORD_REQUIRED':
         return jsonify({'status': 'password_required'}), 401
@@ -142,6 +183,7 @@ def verify():
         return jsonify({'error': error}), 400
 
 @app.route('/api/auth/logout', methods=['POST'])
+@token_required
 def logout():
     manager = get_current_manager()
     if manager:
@@ -163,6 +205,7 @@ def logout():
 
 # --- File Routes ---
 @app.route('/api/files')
+@token_required
 def list_files():
     user_id = get_current_user_id()
     if not user_id:
@@ -179,6 +222,7 @@ def list_files():
     return jsonify(result)
 
 @app.route('/api/storage')
+@token_required
 def get_storage_usage():
     user_id = get_current_user_id()
     if not user_id:
@@ -190,6 +234,7 @@ def get_storage_usage():
     return jsonify({'used': total_bytes})
 
 @app.route('/api/upload', methods=['POST'])
+@token_required
 def upload_file():
     user_id = get_current_user_id()
     if not user_id:
@@ -237,6 +282,7 @@ def upload_file():
             os.remove(temp_path)
 
 @app.route('/api/download/<file_id>')
+@token_required
 def download_file(file_id):
     user_id = get_current_user_id()
     if not user_id:
@@ -277,6 +323,7 @@ def download_file(file_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/folders', methods=['POST'])
+@token_required
 def create_folder():
     user_id = get_current_user_id()
     if not user_id:
@@ -297,6 +344,7 @@ def create_folder():
     return jsonify(new_folder.to_dict()), 201
 
 @app.route('/api/move', methods=['POST'])
+@token_required
 def move_item():
     user_id = get_current_user_id()
     if not user_id:
@@ -389,6 +437,7 @@ def copy_recursive(item, new_parent_id, user_id, manager):
             copy_recursive(child, new_folder.id, user_id, manager)
 
 @app.route('/api/copy', methods=['POST'])
+@token_required
 def copy_item():
     user_id = get_current_user_id()
     if not user_id:
@@ -430,6 +479,7 @@ def copy_item():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/rename', methods=['POST'])
+@token_required
 def rename_item():
     user_id = get_current_user_id()
     if not user_id:
@@ -473,6 +523,7 @@ def delete_folder_recursive(folder_id, user_id, manager):
         db.session.delete(folder)
 
 @app.route('/api/delete', methods=['POST'])
+@token_required
 def delete_item():
     user_id = get_current_user_id()
     if not user_id:
