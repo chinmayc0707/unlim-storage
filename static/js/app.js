@@ -514,9 +514,24 @@ function showContextMenu(e, item) {
     const downloadBtn = document.getElementById('context-download-btn');
     const downloadFolderBtn = document.getElementById('context-download-folder-btn');
 
+    let allFolders = true;
+    if (selectedItems.size > 0) {
+        selectedItems.forEach(id => {
+            const card = document.querySelector(`.file-card[data-id="${id}"]`);
+            if (card && card.dataset.type !== 'folder') {
+                allFolders = false;
+            }
+        });
+    }
+
     if (item.type === 'folder') {
         if (downloadBtn) downloadBtn.style.display = 'none';
-        if (downloadFolderBtn) downloadFolderBtn.style.display = 'block';
+        // Only show download folder if all selected items (if any) are folders
+        if (selectedItems.has(item.id) && selectedItems.size > 0 && !allFolders) {
+             if (downloadFolderBtn) downloadFolderBtn.style.display = 'none';
+        } else {
+             if (downloadFolderBtn) downloadFolderBtn.style.display = 'block';
+        }
     } else {
         if (downloadBtn) downloadBtn.style.display = 'block';
         if (downloadFolderBtn) downloadFolderBtn.style.display = 'none';
@@ -542,7 +557,21 @@ function downloadItem() {
 function downloadFolder() {
     if (!contextMenuItem || contextMenuItem.type !== 'folder') return;
 
-    window.location.href = `/api/download/folder/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
+    if (selectedItems.has(contextMenuItem.id) && selectedItems.size > 1) {
+        let folderIds = [];
+        selectedItems.forEach(id => {
+            const card = document.querySelector(`.file-card[data-id="${id}"]`);
+            if (card && card.dataset.type === 'folder') {
+                folderIds.push(id);
+            }
+        });
+        if (folderIds.length > 0) {
+            window.location.href = `/api/download/folders?ids=${folderIds.join(',')}&token=${localStorage.getItem('token')}`;
+        }
+    } else {
+        window.location.href = `/api/download/folder/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
+    }
+
     hideContextMenu();
 }
 

@@ -396,6 +396,99 @@ def download_folder(folder_id):
                 pass
         return jsonify({'error': str(e)}), 500
 
+
+@app.route('/api/download/folders')
+@token_required
+def download_folders():
+    user_id = get_current_user_id()
+    if not user_id:
+        return jsonify({'error': 'Not authenticated'}), 401
+
+    ids_str = request.args.get('ids')
+    if not ids_str:
+        return jsonify({'error': 'No folder IDs provided'}), 400
+
+    folder_ids = ids_str.split(',')
+    manager = get_current_manager()
+
+    all_items = []
+
+    for folder_id in folder_ids:
+        folder = Folder.query.filter_by(id=folder_id, user_id=user_id).first()
+        if not folder:
+            continue
+
+        items = get_folder_contents_recursive(folder.id, user_id, folder.name)
+        if items:
+            all_items.extend(items)
+        else:
+            # Keep track of empty folders
+            all_items.append({'empty_folder': True, 'path': folder.name})
+
+    if not all_items:
+        # Create an empty zip if all folders are empty/not found
+        memory_file = io.BytesIO()
+        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+            pass
+        memory_file.seek(0)
+        return send_file(
+            memory_file,
+            as_attachment=True,
+            download_name=f"{Folder.query.filter_by(id=folder_ids[0], user_id=user_id).first().name}.zip" if len(folder_ids) == 1 else "folders.zip",
+            mimetype='application/zip'
+        )
+
+    import uuid
+    zip_filename = f"download_folders_{uuid.uuid4().hex}.zip"
+    zip_path = os.path.join(BASE_DIR, 'tmp', zip_filename)
+    os.makedirs(os.path.join(BASE_DIR, 'tmp'), exist_ok=True)
+
+    try:
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for item in all_items:
+                if 'empty_folder' in item:
+                    # Create an empty directory in the zip
+                    zinfo = zipfile.ZipInfo(item['path'] + '/')
+                    zipf.writestr(zinfo, '')
+                    continue
+
+                file_obj = item['file']
+                rel_path = item['path']
+
+                temp_file_path = os.path.join(BASE_DIR, 'tmp', f"temp_dl_{file_obj.id}")
+
+                try:
+                    manager.download_file(file_obj.message_ids, temp_file_path)
+                    zipf.write(temp_file_path, arcname=rel_path)
+                finally:
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+
+        response = send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=f"{Folder.query.filter_by(id=folder_ids[0], user_id=user_id).first().name}.zip" if len(folder_ids) == 1 else "folders.zip",
+            mimetype='application/zip'
+        )
+
+        @response.call_on_close
+        def cleanup():
+            if os.path.exists(zip_path):
+                try:
+                    os.remove(zip_path)
+                except Exception as e:
+                    print(f"Error deleting temp zip file: {e}")
+
+        return response
+
+    except Exception as e:
+        if os.path.exists(zip_path):
+            try:
+                os.remove(zip_path)
+            except:
+                pass
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/folders', methods=['POST'])
 @token_required
 def create_folder():
