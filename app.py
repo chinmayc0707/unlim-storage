@@ -6,6 +6,7 @@ import os
 import shutil
 from functools import wraps
 import jwt
+import zipfile
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -322,9 +323,6 @@ def download_file(file_id):
                 pass
         return jsonify({'error': str(e)}), 500
 
-import zipfile
-import io
-
 @app.route('/api/download/folder/<folder_id>')
 @token_required
 def download_folder(folder_id):
@@ -335,41 +333,30 @@ def download_folder(folder_id):
     folder = Folder.query.filter_by(id=folder_id, user_id=user_id).first_or_404()
     manager = get_current_manager()
 
-    # Get all files and their relative paths
-    items = get_folder_contents_recursive(folder.id, user_id, folder.name)
-
-    if not items:
-        # Create an empty zip if folder is empty
-        memory_file = io.BytesIO()
-        with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
-            pass
-        memory_file.seek(0)
-        return send_file(
-            memory_file,
-            as_attachment=True,
-            download_name=f"{folder.name}.zip",
-            mimetype='application/zip'
-        )
-
-    import uuid
-    zip_filename = f"download_folder_{folder_id}_{uuid.uuid4().hex}.zip"
-    zip_path = os.path.join(BASE_DIR, 'tmp', zip_filename)
-    os.makedirs(os.path.join(BASE_DIR, 'tmp'), exist_ok=True)
+    temp_dir = os.path.join(BASE_DIR, 'tmp', f"download_folder_{folder_id}")
+    os.makedirs(temp_dir, exist_ok=True)
+    zip_path = os.path.join(BASE_DIR, 'tmp', f"{folder.name}_{folder_id}.zip")
 
     try:
+        def download_recursive(current_folder_id, current_path):
+            os.makedirs(current_path, exist_ok=True)
+            files = File.query.filter_by(parent_id=current_folder_id, user_id=user_id).all()
+            for f in files:
+                file_path = os.path.join(current_path, f.name)
+                manager.download_file(f.message_ids, file_path)
+
+            subfolders = Folder.query.filter_by(parent_id=current_folder_id, user_id=user_id).all()
+            for subf in subfolders:
+                download_recursive(subf.id, os.path.join(current_path, subf.name))
+
+        download_recursive(folder.id, os.path.join(temp_dir, folder.name))
+
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for item in items:
-                file_obj = item['file']
-                rel_path = item['path']
-
-                temp_file_path = os.path.join(BASE_DIR, 'tmp', f"temp_dl_{file_obj.id}")
-
-                try:
-                    manager.download_file(file_obj.message_ids, temp_file_path)
-                    zipf.write(temp_file_path, arcname=rel_path)
-                finally:
-                    if os.path.exists(temp_file_path):
-                        os.remove(temp_file_path)
+            for root, dirs, files in os.walk(temp_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, temp_dir)
+                    zipf.write(file_path, arcname)
 
         response = send_file(
             zip_path,
@@ -380,15 +367,25 @@ def download_folder(folder_id):
 
         @response.call_on_close
         def cleanup():
+            if os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    print(f"Error deleting temp dir: {e}")
             if os.path.exists(zip_path):
                 try:
                     os.remove(zip_path)
                 except Exception as e:
-                    print(f"Error deleting temp zip file: {e}")
-
+                    print(f"Error deleting temp zip: {e}")
+        
         return response
 
     except Exception as e:
+        if os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except:
+                pass
         if os.path.exists(zip_path):
             try:
                 os.remove(zip_path)
@@ -575,25 +572,6 @@ def rename_item():
     item.name = new_name
     db.session.commit()
     return jsonify({'status': 'success'})
-
-def get_folder_contents_recursive(folder_id, user_id, current_path=""):
-    items = []
-
-    # Get files in current folder
-    files = File.query.filter_by(parent_id=folder_id, user_id=user_id).all()
-    for file in files:
-        items.append({
-            'file': file,
-            'path': os.path.join(current_path, file.name)
-        })
-
-    # Get subfolders and recurse
-    subfolders = Folder.query.filter_by(parent_id=folder_id, user_id=user_id).all()
-    for subfolder in subfolders:
-        new_path = os.path.join(current_path, subfolder.name)
-        items.extend(get_folder_contents_recursive(subfolder.id, user_id, new_path))
-
-    return items
 
 def delete_folder_recursive(folder_id, user_id, manager):
     # 1. Delete all files in this folder

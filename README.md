@@ -59,7 +59,7 @@ When you upload a file, the backend splits it into chunks (if it exceeds Telegra
 
 4.  **Run the application:**
     ```bash
-    python wsgi.py
+    python3 app.py
     ```
     The application will be available at `http://localhost:5000`.
 

@@ -510,18 +510,6 @@ function showContextMenu(e, item) {
     e.stopPropagation();
     contextMenuItem = item;
     const menu = document.getElementById('context-menu');
-
-    const downloadBtn = document.getElementById('context-download-btn');
-    const downloadFolderBtn = document.getElementById('context-download-folder-btn');
-
-    if (item.type === 'folder') {
-        if (downloadBtn) downloadBtn.style.display = 'none';
-        if (downloadFolderBtn) downloadFolderBtn.style.display = 'block';
-    } else {
-        if (downloadBtn) downloadBtn.style.display = 'block';
-        if (downloadFolderBtn) downloadFolderBtn.style.display = 'none';
-    }
-
     menu.style.display = 'block';
     menu.style.left = `${e.pageX}px`;
     menu.style.top = `${e.pageY}px`;
@@ -533,16 +521,13 @@ function hideContextMenu() {
 }
 
 function downloadItem() {
-    if (!contextMenuItem || contextMenuItem.type === 'folder') return;
+    if (!contextMenuItem) return;
 
-    window.location.href = `/api/download/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
-    hideContextMenu();
-}
-
-function downloadFolder() {
-    if (!contextMenuItem || contextMenuItem.type !== 'folder') return;
-
-    window.location.href = `/api/download/folder/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
+    if (contextMenuItem.type === 'folder') {
+        window.location.href = `/api/download/folder/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
+    } else {
+        window.location.href = `/api/download/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
+    }
     hideContextMenu();
 }
 
@@ -695,7 +680,6 @@ async function logout() {
 // Expose for HTML onclick
 window.navigateTo = navigateTo;
 window.downloadItem = downloadItem;
-window.downloadFolder = downloadFolder;
 window.deleteItem = deleteItem;
 window.logout = logout;
 window.toggleNewMenu = toggleNewMenu;
