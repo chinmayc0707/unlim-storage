@@ -15,3 +15,8 @@ tmp/
 .idea/
 *.log
 anon.session
+*.txt
+*.zip
+*.db
+!requirements.txt
+!README.md
