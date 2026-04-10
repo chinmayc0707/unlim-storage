@@ -588,6 +588,7 @@ async function downloadFolder() {
                     }
                     setTimeout(pollStatus, 1000);
                 } else if (statusData.status === 'completed') {
+                    progressBar.classList.remove('indeterminate');
                     progressBar.style.width = '100%';
                     progressBar.style.backgroundColor = '#1e8e3e';
                     statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
@@ -600,6 +601,7 @@ async function downloadFolder() {
                     throw new Error(statusData.error || 'Zipping failed');
                 }
             } catch (error) {
+                progressBar.classList.remove('indeterminate');
                 progressBar.style.backgroundColor = '#d32f2f';
                 statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #d32f2f;"></i>';
                 nameText.textContent = `Error zipping ${folderName}`;
@@ -612,6 +614,7 @@ async function downloadFolder() {
         setTimeout(pollStatus, 1000);
 
     } catch (error) {
+        progressBar.classList.remove('indeterminate');
         progressBar.style.backgroundColor = '#d32f2f';
         statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #d32f2f;"></i>';
         nameText.textContent = `Error zipping ${folderName}`;
