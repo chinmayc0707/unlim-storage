@@ -539,11 +539,86 @@ function downloadItem() {
     hideContextMenu();
 }
 
-function downloadFolder() {
+async function downloadFolder() {
     if (!contextMenuItem || contextMenuItem.type !== 'folder') return;
-
-    window.location.href = `/api/download/folder/${contextMenuItem.id}?token=${localStorage.getItem('token')}`;
+    
+    const folderId = contextMenuItem.id;
+    const folderName = contextMenuItem.name || 'Folder';
     hideContextMenu();
+
+    const uiItem = createActionItemUI('Zipping', folderName);
+    const progressBar = uiItem.querySelector('.upload-progress-bar');
+    const statusIcon = uiItem.querySelector('.upload-status-icon');
+    const sizeText = uiItem.querySelector('.upload-size');
+    const nameText = uiItem.querySelector('.upload-filename');
+
+    try {
+        const response = await fetch(`/api/download/folder/${folderId}/start`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to start zipping');
+        }
+
+        const data = await response.json();
+        const taskId = data.task_id;
+
+        const pollStatus = async () => {
+            try {
+                const statusRes = await fetch(`/api/download/folder/status/${taskId}`, {
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                });
+                
+                if (!statusRes.ok) {
+                    throw new Error('Failed to check status');
+                }
+                
+                const statusData = await statusRes.json();
+                
+                if (statusData.status === 'in_progress') {
+                    if (statusData.total > 0) {
+                        const percent = Math.round((statusData.progress / statusData.total) * 100);
+                        progressBar.classList.remove('indeterminate');
+                        progressBar.style.width = percent + '%';
+                        sizeText.textContent = `${statusData.progress} / ${statusData.total} files`;
+                    } else {
+                        sizeText.textContent = 'Preparing...';
+                    }
+                    setTimeout(pollStatus, 1000);
+                } else if (statusData.status === 'completed') {
+                    progressBar.style.width = '100%';
+                    progressBar.style.backgroundColor = '#1e8e3e';
+                    statusIcon.innerHTML = '<i class="fa-solid fa-check" style="color: #1e8e3e;"></i>';
+                    nameText.textContent = `Zipped ${folderName}`;
+                    sizeText.textContent = 'Completed. Downloading...';
+                    
+                    // Trigger download
+                    window.location.href = `/api/download/folder/file/${taskId}?token=${localStorage.getItem('token')}`;
+                } else {
+                    throw new Error(statusData.error || 'Zipping failed');
+                }
+            } catch (error) {
+                progressBar.style.backgroundColor = '#d32f2f';
+                statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #d32f2f;"></i>';
+                nameText.textContent = `Error zipping ${folderName}`;
+                sizeText.textContent = 'Failed';
+                console.error(error);
+            }
+        };
+
+        // Start polling
+        setTimeout(pollStatus, 1000);
+
+    } catch (error) {
+        progressBar.style.backgroundColor = '#d32f2f';
+        statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color: #d32f2f;"></i>';
+        nameText.textContent = `Error zipping ${folderName}`;
+        sizeText.textContent = 'Failed';
+        console.error(error);
+        alert(error.message);
+    }
 }
 
 async function deleteItem() {
