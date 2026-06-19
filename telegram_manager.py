@@ -148,42 +148,11 @@ class TelegramManager:
         if file_size <= 10 * 1024 * 1024:
              return await self.client.upload_file(file_path)
 
-        file_id = random.randint(1, 2**63 - 1)
-        part_count = (file_size + chunk_size - 1) // chunk_size
-
-        # 4 concurrent workers
-        sem = asyncio.Semaphore(4)
-
-        async def upload_part(part_index):
-            async with sem:
-                offset = part_index * chunk_size
-                with open(file_path, 'rb') as f:
-                    f.seek(offset)
-                    data = f.read(chunk_size)
-
-                if not data:
-                    return
-
-                # Retry logic
-                for attempt in range(3):
-                    try:
-                         await self.client(SaveBigFilePartRequest(
-                             file_id, part_index, part_count, data
-                         ))
-                         return
-                    except Exception as e:
-                        if attempt == 2:
-                            raise e
-                        await asyncio.sleep(1)
-
-        tasks = [upload_part(i) for i in range(part_count)]
-        await asyncio.gather(*tasks)
-
-        return InputFileBig(
-            id=file_id,
-            parts=part_count,
-            name=file_name
-        )
+        from fast_telethon import upload_file
+        with open(file_path, 'rb') as f:
+            input_file = await upload_file(self.client, f)
+            input_file.name = file_name
+            return input_file
 
     def upload_file(self, file_path, codeword, file_name=None):
         self.ensure_connected()
